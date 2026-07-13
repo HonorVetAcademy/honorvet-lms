@@ -8,9 +8,9 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-const FROM_ADDRESS = 'HonorVet LMS <noreply@honorvet.com>'
-// Before honorvet.com is verified in Resend, change the line above to:
-// const FROM_ADDRESS = 'HonorVet LMS <onboarding@resend.dev>'
+const FROM_ADDRESS = 'HonorVet LMS <onboarding@resend.dev>'
+// When honorvet.com is verified in Resend DNS, change to:
+// const FROM_ADDRESS = 'HonorVet LMS <noreply@honorvet.com>'
 
 serve(async (req: Request) => {
   try {
