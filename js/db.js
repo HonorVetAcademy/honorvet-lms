@@ -105,17 +105,39 @@ const Courses = {
   _cache: null,
 
   async getAll() {
-    // Courses are stored in data/courses.json (edit to add courses)
     if (this._cache) return this._cache;
-    const res = await fetch('data/courses.json');
-    if (!res.ok) return [];
-    this._cache = await res.json();
+    const { data, error } = await sb()
+      .from('courses')
+      .select('*')
+      .order('created_at', { ascending: true });
+    if (error) throw error;
+    this._cache = data || [];
     return this._cache;
   },
 
   async getById(id) {
     const all = await this.getAll();
     return all.find(c => c.id === id) || null;
+  },
+
+  async upsert(course) {
+    const { data, error } = await sb()
+      .from('courses')
+      .upsert(course, { onConflict: 'id' })
+      .select()
+      .single();
+    if (error) throw error;
+    this._cache = null;
+    return data;
+  },
+
+  async remove(id) {
+    const { error } = await sb()
+      .from('courses')
+      .delete()
+      .eq('id', id);
+    if (error) throw error;
+    this._cache = null;
   },
 
   invalidate() { this._cache = null; },

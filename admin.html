@@ -255,6 +255,7 @@ function renderTable() {
           <button class="btn btn-ghost btn-sm" onclick="openAssignModal('${c.id}','${escQ(c.title)}')">Assign</button>
           <button class="btn btn-ghost btn-sm" onclick="openEditModal(${JSON.stringify(c).replace(/"/g,'&quot;')})">Edit</button>
           <a href="course.html?id=${c.id}" class="btn btn-ghost btn-sm" target="_blank">Preview</a>
+          <button class="btn btn-ghost btn-sm" style="color:var(--danger)" onclick="deleteCourse('${c.id}','${escQ(c.title)}')">Delete</button>
         </div>
       </td>
     </tr>`).join('')}</tbody>
@@ -333,27 +334,26 @@ async function saveCourse() {
 
   btn.disabled = true; btn.textContent = 'Saving…';
 
-  // Update local courses array and prompt download
-  if (id) {
-    const idx = courses.findIndex(c => c.id === id);
-    if (idx >= 0) courses[idx] = course; else courses.push(course);
-  } else {
-    courses.push(course);
+  try {
+    await Courses.upsert(course);
+    await loadCourses();
+    closeModal('course-modal');
+    toast('Course saved!', 'success');
+  } catch(e) {
+    alert.innerHTML = `<div class="alert alert-error">${e.message}</div>`;
   }
-
-  downloadCoursesJson(courses);
-  renderTable();
-  closeModal('course-modal');
-  toast('Course saved! Replace data/courses.json in your GitHub repo with the downloaded file.', 'success');
   btn.disabled = false; btn.textContent = 'Save Course';
 }
 
-function downloadCoursesJson(data) {
-  const json = JSON.stringify(data, null, 2);
-  const a = document.createElement('a');
-  a.href = 'data:application/json,' + encodeURIComponent(json);
-  a.download = 'courses.json';
-  a.click();
+async function deleteCourse(id, title) {
+  if (!confirm(`Delete "${title}"? This cannot be undone.`)) return;
+  try {
+    await Courses.remove(id);
+    await loadCourses();
+    toast('Course deleted.', 'success');
+  } catch(e) {
+    toast(e.message, 'error');
+  }
 }
 
 function openAssignModal(courseId, courseTitle) {
