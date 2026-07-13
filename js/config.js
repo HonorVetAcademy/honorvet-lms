@@ -2,8 +2,8 @@
 // 1. Go to https://supabase.com and create a free project
 // 2. Project Settings → API → copy "Project URL" and "anon public" key
 // 3. Replace the values below
-const SUPABASE_URL  = 'YOUR_SUPABASE_URL';   // e.g. https://xxxx.supabase.co
-const SUPABASE_ANON = 'YOUR_SUPABASE_ANON_KEY';
+const SUPABASE_URL  = 'https://rtkcnjlqgbcpofseilcu.supabase.co';
+const SUPABASE_ANON = 'sb_publishable_5HdLjHI_1J-xN9uqiERgTg_KPyT-Jan';
 
 // ── App configuration ─────────────────────────────────────────
 const APP_CONFIG = {
