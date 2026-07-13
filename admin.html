@@ -108,7 +108,7 @@
 
 <!-- Assign users modal -->
 <div class="modal-overlay" id="assign-modal">
-  <div class="modal" style="max-width:480px">
+  <div class="modal" style="max-width:520px">
     <div class="modal-header">
       <span class="modal-title">Assign Course to Users</span>
       <button class="modal-close" onclick="closeModal('assign-modal')">&times;</button>
@@ -119,14 +119,37 @@
       <p style="font-size:13px;color:var(--text-muted);margin-bottom:14px" id="assign-course-name"></p>
       <div class="form-group">
         <label class="form-label">Assign to</label>
-        <select class="form-select" id="assign-scope">
+        <select class="form-select" id="assign-scope" onchange="onScopeChange()">
           <option value="all">All employees</option>
           <option value="department">Specific department</option>
+          <option value="role">Specific role</option>
+          <option value="users">Pick individual users</option>
         </select>
       </div>
       <div class="form-group" id="dept-group" style="display:none">
         <label class="form-label">Department</label>
         <input class="form-input" id="assign-dept" placeholder="e.g. Operations">
+      </div>
+      <div class="form-group" id="role-group" style="display:none">
+        <label class="form-label">Role</label>
+        <select class="form-select" id="assign-role">
+          <option value="employee">Employee</option>
+          <option value="manager">Manager</option>
+          <option value="trainer">Trainer</option>
+          <option value="hr">HR</option>
+        </select>
+      </div>
+      <div id="users-group" style="display:none">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <label class="form-label" style="margin:0">Select users</label>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-ghost btn-sm" onclick="toggleAllUsers(true)">Select all</button>
+            <button class="btn btn-ghost btn-sm" onclick="toggleAllUsers(false)">Clear</button>
+          </div>
+        </div>
+        <input class="form-input" id="user-search" placeholder="Search by name or email…" oninput="filterUserList()" style="margin-bottom:8px">
+        <div id="user-checklist" style="max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:4px"></div>
+        <div id="user-selected-count" style="font-size:12px;color:var(--text-muted);margin-top:6px"></div>
       </div>
     </div>
     <div class="modal-footer">
@@ -146,9 +169,54 @@ document.getElementById('app-name').textContent = APP_CONFIG.appName;
 
 let courses = [];
 
-document.getElementById('assign-scope').onchange = function() {
-  document.getElementById('dept-group').style.display = this.value === 'department' ? '' : 'none';
-};
+let allUsersCache = [];
+
+function onScopeChange() {
+  const v = document.getElementById('assign-scope').value;
+  document.getElementById('dept-group').style.display  = v === 'department' ? '' : 'none';
+  document.getElementById('role-group').style.display  = v === 'role'       ? '' : 'none';
+  document.getElementById('users-group').style.display = v === 'users'      ? '' : 'none';
+  if (v === 'users') buildUserChecklist();
+}
+
+async function buildUserChecklist() {
+  const list = document.getElementById('user-checklist');
+  list.innerHTML = '<div style="padding:12px;color:var(--text-muted);font-size:13px">Loading…</div>';
+  allUsersCache = await Users.getAll();
+  renderUserChecklist(allUsersCache);
+}
+
+function renderUserChecklist(users) {
+  const list = document.getElementById('user-checklist');
+  if (!users.length) { list.innerHTML = '<div style="padding:12px;font-size:13px;color:var(--text-muted)">No users found.</div>'; return; }
+  list.innerHTML = users.map(u => `
+    <label style="display:flex;align-items:center;gap:10px;padding:8px 10px;cursor:pointer;border-radius:6px;transition:background .15s" onmouseover="this.style.background='var(--bg-alt)'" onmouseout="this.style.background=''">
+      <input type="checkbox" class="user-chk" data-id="${u.id}" style="width:15px;height:15px;accent-color:var(--brand)" onchange="updateSelectedCount()">
+      <div>
+        <div style="font-size:13px;font-weight:600">${u.name||'—'}</div>
+        <div style="font-size:11.5px;color:var(--text-muted)">${u.email} &middot; ${u.role} ${u.department ? '· '+u.department : ''}</div>
+      </div>
+    </label>`).join('');
+  updateSelectedCount();
+}
+
+function filterUserList() {
+  const q = document.getElementById('user-search').value.toLowerCase();
+  const filtered = allUsersCache.filter(u =>
+    (u.name||'').toLowerCase().includes(q) || (u.email||'').toLowerCase().includes(q)
+  );
+  renderUserChecklist(filtered);
+}
+
+function toggleAllUsers(checked) {
+  document.querySelectorAll('.user-chk').forEach(cb => cb.checked = checked);
+  updateSelectedCount();
+}
+
+function updateSelectedCount() {
+  const n = document.querySelectorAll('.user-chk:checked').length;
+  document.getElementById('user-selected-count').textContent = n ? `${n} user${n>1?'s':''} selected` : '';
+}
 
 (async () => {
   const user = await requireAdmin();
@@ -302,16 +370,28 @@ async function doAssign() {
   const alertEl  = document.getElementById('assign-alert');
   const courseId = document.getElementById('assign-course-id').value;
   const scope    = document.getElementById('assign-scope').value;
-  const dept     = document.getElementById('assign-dept').value.trim();
 
   btn.disabled = true; btn.textContent = 'Assigning…';
   try {
-    let users = await Users.getAll();
-    if (scope === 'department' && dept) users = users.filter(u => u.department?.toLowerCase() === dept.toLowerCase());
-    const ids = users.map(u => u.id);
-    if (!ids.length) throw new Error('No users found for this filter.');
+    let ids = [];
+    if (scope === 'users') {
+      ids = Array.from(document.querySelectorAll('.user-chk:checked')).map(cb => cb.dataset.id);
+      if (!ids.length) throw new Error('Select at least one user.');
+    } else {
+      let users = await Users.getAll();
+      if (scope === 'department') {
+        const dept = document.getElementById('assign-dept').value.trim();
+        if (!dept) throw new Error('Enter a department name.');
+        users = users.filter(u => u.department?.toLowerCase() === dept.toLowerCase());
+      } else if (scope === 'role') {
+        const role = document.getElementById('assign-role').value;
+        users = users.filter(u => u.role === role);
+      }
+      ids = users.map(u => u.id);
+      if (!ids.length) throw new Error('No users found for this filter.');
+    }
     await Enrollments.bulkAssign(courseId, ids);
-    alertEl.innerHTML = `<div class="alert alert-success">✓ Assigned to ${ids.length} users.</div>`;
+    alertEl.innerHTML = `<div class="alert alert-success">✓ Assigned to ${ids.length} user${ids.length>1?'s':''}.</div>`;
     btn.textContent = 'Done ✓';
   } catch(e) {
     alertEl.innerHTML = `<div class="alert alert-error">${e.message}</div>`;
