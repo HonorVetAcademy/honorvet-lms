@@ -184,25 +184,118 @@ const Enrollments = {
   async updateProgress(userId, courseId, status, progress = 100) {
     const updates = { status, progress };
     if (status === 'completed') updates.completed_at = new Date().toISOString();
-    const { data, error } = await sb()
-      .from('enrollments')
-      .update(updates)
-      .eq('user_id', userId)
-      .eq('course_id', courseId)
-      .select()
-      .single();
+    const { data, error } = await sb().from('enrollments').update(updates).eq('user_id', userId).eq('course_id', courseId).select().single();
     if (error) throw error;
+    if (status === 'completed') {
+      try {
+        await Certificates.issue(userId, courseId);
+        const course = await Courses.getById(courseId);
+        await Notifications.create(userId, 'certificate_issued',
+          'Certificate earned!',
+          `You completed "${course?.title || courseId}" and earned a certificate.`,
+          { course_id: courseId });
+      } catch(e) { console.warn('Certificate error:', e.message); }
+    }
     return data;
   },
 
   async bulkAssign(courseId, userIds) {
     const rows = userIds.map(uid => ({ user_id: uid, course_id: courseId, status: 'not_started' }));
-    const { data, error } = await sb()
-      .from('enrollments')
-      .upsert(rows, { onConflict: 'user_id,course_id' })
-      .select();
+    const { data, error } = await sb().from('enrollments').upsert(rows, { onConflict: 'user_id,course_id' }).select();
+    if (error) throw error;
+    try {
+      const course = await Courses.getById(courseId);
+      await Notifications.bulkCreate(userIds, 'course_assigned',
+        'New course assigned', `You have been enrolled in "${course?.title || courseId}"`,
+        { course_id: courseId });
+    } catch(e) { console.warn('Notification error:', e.message); }
+    return data;
+  },
+};
+
+// ── Notifications ─────────────────────────────────────────────
+const Notifications = {
+  async getUnread(userId) {
+    const { data } = await sb().from('notifications').select('*').eq('user_id', userId).eq('read', false).order('created_at', { ascending: false }).limit(20);
+    return data || [];
+  },
+  async getAll(userId) {
+    const { data } = await sb().from('notifications').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(50);
+    return data || [];
+  },
+  async markAllRead(userId) {
+    await sb().from('notifications').update({ read: true }).eq('user_id', userId).eq('read', false);
+  },
+  async create(userId, type, title, body, data = {}) {
+    await sb().from('notifications').insert({ user_id: userId, type, title, body, data });
+  },
+  async bulkCreate(userIds, type, title, body, data = {}) {
+    if (!userIds.length) return;
+    await sb().from('notifications').insert(userIds.map(uid => ({ user_id: uid, type, title, body, data })));
+  },
+};
+
+// ── Certificates ───────────────────────────────────────────────
+const Certificates = {
+  async issue(userId, courseId) {
+    const { data, error } = await sb().from('certificates').upsert({ user_id: userId, course_id: courseId }, { onConflict: 'user_id,course_id' }).select().single();
     if (error) throw error;
     return data;
+  },
+  async getMine(userId) {
+    const { data, error } = await sb().from('certificates').select('*, courses(title, icon)').eq('user_id', userId).order('issued_at', { ascending: false });
+    if (error) throw error;
+    return data || [];
+  },
+  async getAll() {
+    const { data, error } = await sb().from('certificates').select('*, users(name, email), courses(title)').order('issued_at', { ascending: false });
+    if (error) throw error;
+    return data || [];
+  },
+};
+
+// ── Learning Paths ─────────────────────────────────────────────
+const LearningPaths = {
+  async getAll() {
+    const { data, error } = await sb().from('learning_paths').select('*, learning_path_courses(course_id, position)').order('created_at');
+    if (error) throw error;
+    return data || [];
+  },
+  async getMine(userId) {
+    const { data, error } = await sb().from('path_enrollments').select('*, learning_paths(*, learning_path_courses(course_id, position))').eq('user_id', userId);
+    if (error) throw error;
+    return (data || []).map(pe => ({ ...pe.learning_paths, assigned_at: pe.assigned_at }));
+  },
+  async upsert(path) {
+    const { data, error } = await sb().from('learning_paths').upsert(path, { onConflict: 'id' }).select().single();
+    if (error) throw error;
+    return data;
+  },
+  async remove(id) {
+    const { error } = await sb().from('learning_paths').delete().eq('id', id);
+    if (error) throw error;
+  },
+  async setCourses(pathId, courseIds) {
+    await sb().from('learning_path_courses').delete().eq('path_id', pathId);
+    if (!courseIds.length) return;
+    const { error } = await sb().from('learning_path_courses').insert(courseIds.map((id, i) => ({ path_id: pathId, course_id: id, position: i })));
+    if (error) throw error;
+  },
+  async assign(pathId, userIds) {
+    if (!userIds.length) return;
+    const { error } = await sb().from('path_enrollments').upsert(userIds.map(uid => ({ user_id: uid, path_id: pathId })), { onConflict: 'user_id,path_id' });
+    if (error) throw error;
+    // Enroll users in all courses in the path, and notify
+    const paths = await LearningPaths.getAll();
+    const path = paths.find(p => p.id === pathId);
+    if (path?.learning_path_courses?.length) {
+      for (const pc of path.learning_path_courses) {
+        const rows = userIds.map(uid => ({ user_id: uid, course_id: pc.course_id, status: 'not_started' }));
+        await sb().from('enrollments').upsert(rows, { onConflict: 'user_id,course_id' });
+      }
+    }
+    await Notifications.bulkCreate(userIds, 'path_assigned', 'Learning path assigned',
+      `You have been enrolled in the learning path: "${path?.title || pathId}"`, { path_id: pathId });
   },
 };
 

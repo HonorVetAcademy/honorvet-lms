@@ -33,7 +33,8 @@
         <div class="topbar-title" id="welcome-title">Dashboard</div>
         <div class="topbar-sub" id="welcome-sub">Here's your learning summary</div>
       </div>
-      <div class="topbar-actions">
+      <div class="topbar-actions" style="display:flex;align-items:center;gap:10px">
+        <div id="notif-bell-wrap"></div>
         <a href="catalog.html" class="btn btn-primary">${iconPlus_inline()} Browse Courses</a>
       </div>
     </header>
@@ -90,6 +91,7 @@ document.getElementById('app-name').textContent    = APP_CONFIG.appName;
 
   document.getElementById('welcome-title').textContent = `Good day, ${user.name?.split(' ')[0] || 'there'} 👋`;
   renderNav('dashboard', user);
+  renderNotifBell(user.id, 'notif-bell-wrap');
   renderUserChip(user);
 
   // Load enrollments + courses in parallel

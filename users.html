@@ -26,7 +26,8 @@
         <div class="topbar-title">User Management</div>
         <div class="topbar-sub" id="user-count-sub">Loading…</div>
       </div>
-      <div class="topbar-actions">
+      <div class="topbar-actions" style="display:flex;align-items:center;gap:10px">
+        <div id="notif-bell-wrap"></div>
         <button class="btn btn-secondary" onclick="openModal('import-modal')">⬆ Import CSV</button>
         <button class="btn btn-primary" onclick="openModal('add-user-modal')">+ Add User</button>
       </div>
@@ -165,6 +166,7 @@ let allUsers = [], csvRows = [];
   const user = await requireAdmin();
   if (!user) return;
   renderNav('users', user);
+  renderNotifBell(user.id, 'notif-bell-wrap');
   renderUserChip(user);
   await loadUsers();
 

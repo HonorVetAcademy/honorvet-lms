@@ -58,8 +58,9 @@ function renderNav(activePage, user) {
   if (!nav) return;
 
   const items = [
-    { href: 'dashboard.html', icon: iconHome(),   label: 'Dashboard',  page: 'dashboard' },
-    { href: 'catalog.html',   icon: iconCatalog(), label: 'My Courses', page: 'catalog'   },
+    { href: 'dashboard.html', icon: iconHome(),    label: 'Dashboard',   page: 'dashboard' },
+    { href: 'catalog.html',   icon: iconCatalog(), label: 'My Courses',  page: 'catalog'   },
+    { href: 'paths.html',     icon: iconPath(),    label: 'My Paths',    page: 'paths'     },
   ];
 
   if (isAdmin || isManager) {
@@ -67,8 +68,8 @@ function renderNav(activePage, user) {
   }
   if (isAdmin) {
     items.push(
-      { href: 'users.html',  icon: iconUsers(),  label: 'Users',    page: 'users'  },
-      { href: 'admin.html',  icon: iconSettings(), label: 'Manage Courses', page: 'admin' }
+      { href: 'users.html',  icon: iconUsers(),    label: 'Users',          page: 'users'  },
+      { href: 'admin.html',  icon: iconSettings(), label: 'Manage Courses', page: 'admin'  }
     );
   }
 
@@ -180,11 +181,69 @@ async function fetchGithubReadme(repoUrl) {
 }
 
 // Simple SVG icons (inline, no CDN)
+// Render notification bell into a container element by id
+async function renderNotifBell(userId, containerId) {
+  const wrap = document.getElementById(containerId);
+  if (!wrap) return;
+  let notifs = [];
+  try { notifs = await Notifications.getUnread(userId); } catch {}
+  const count = notifs.length;
+
+  wrap.innerHTML = `
+    <div style="position:relative;display:inline-block">
+      <button class="btn btn-ghost btn-sm" id="notif-btn" onclick="toggleNotifPanel()" style="position:relative;padding:6px 10px">
+        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
+        ${count > 0 ? `<span class="notif-badge">${count > 9 ? '9+' : count}</span>` : ''}
+      </button>
+      <div id="notif-panel" class="notif-panel" style="display:none">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border)">
+          <span style="font-weight:700;font-size:13.5px">Notifications</span>
+          ${count > 0 ? `<button class="btn btn-ghost btn-sm" style="font-size:11px" onclick="markAllRead('${userId}')">Mark all read</button>` : ''}
+        </div>
+        <div id="notif-list" style="max-height:320px;overflow-y:auto">
+          ${notifs.length === 0
+            ? `<div style="padding:24px 16px;text-align:center;color:var(--text-muted);font-size:13px">No new notifications</div>`
+            : notifs.map(n => `
+              <div class="notif-item">
+                <div style="font-size:13px;font-weight:600">${n.title}</div>
+                <div style="font-size:12px;color:var(--text-muted);margin-top:2px">${n.body || ''}</div>
+                <div style="font-size:11px;color:var(--text-dim);margin-top:4px">${fmtDate(n.created_at)}</div>
+              </div>`).join('')
+          }
+        </div>
+      </div>
+    </div>`;
+}
+
+function toggleNotifPanel() {
+  const panel = document.getElementById('notif-panel');
+  if (!panel) return;
+  panel.style.display = panel.style.display === 'none' ? '' : 'none';
+}
+
+async function markAllRead(userId) {
+  try {
+    await Notifications.markAllRead(userId);
+    document.getElementById('notif-panel').style.display = 'none';
+    renderNotifBell(userId, 'notif-bell-wrap');
+    toast('All notifications marked as read.', 'success');
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+document.addEventListener('click', e => {
+  const panel = document.getElementById('notif-panel');
+  const btn   = document.getElementById('notif-btn');
+  if (panel && btn && !btn.contains(e.target) && !panel.contains(e.target)) {
+    panel.style.display = 'none';
+  }
+});
+
 function iconHome()     { return `<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>`; }
 function iconCatalog()  { return `<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>`; }
 function iconChart()    { return `<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>`; }
 function iconUsers()    { return `<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>`; }
 function iconSettings() { return `<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>`; }
+function iconPath()     { return `<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="5" r="2"/><circle cx="19" cy="12" r="2"/><circle cx="12" cy="19" r="2"/><line x1="12" y1="7" x2="19" y2="10"/><line x1="19" y1="14" x2="12" y2="17"/></svg>`; }
 function iconPlus()     { return `<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`; }
 function iconEdit()     { return `<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`; }
 function iconTrash()    { return `<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>`; }

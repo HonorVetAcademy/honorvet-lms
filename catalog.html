@@ -26,7 +26,8 @@
         <div class="topbar-title">Course Catalog</div>
         <div class="topbar-sub">Browse and enroll in available training</div>
       </div>
-      <div class="topbar-actions">
+      <div class="topbar-actions" style="display:flex;align-items:center;gap:10px">
+        <div id="notif-bell-wrap"></div>
         <input class="form-input" type="search" id="search" placeholder="Search courses…" style="width:220px">
         <select class="form-select" id="filter-tag" style="width:160px">
           <option value="">All categories</option>
@@ -63,6 +64,7 @@ let allCourses = [], myEnrollments = [], currentUser = null;
   currentUser = await requireAuth();
   if (!currentUser) return;
   renderNav('catalog', currentUser);
+  renderNotifBell(currentUser.id, 'notif-bell-wrap');
   renderUserChip(currentUser);
 
   [allCourses, myEnrollments] = await Promise.all([

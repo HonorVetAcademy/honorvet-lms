@@ -26,7 +26,8 @@
         <div class="topbar-title">Reports</div>
         <div class="topbar-sub">Training completion and compliance overview</div>
       </div>
-      <div class="topbar-actions">
+      <div class="topbar-actions" style="display:flex;align-items:center;gap:10px">
+        <div id="notif-bell-wrap"></div>
         <button class="btn btn-secondary" onclick="exportCSV()">⬇ Export CSV</button>
       </div>
     </header>
@@ -89,6 +90,7 @@ function switchTab(btn) {
   if (!user) return;
   if (!['admin','hr','manager'].includes(user.role)) { location.href = 'dashboard.html'; return; }
   renderNav('reports', user);
+  renderNotifBell(user.id, 'notif-bell-wrap');
   renderUserChip(user);
 
   [allEnrollments, allUsers, allCourses] = await Promise.all([

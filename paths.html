@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Learning Paths — HonorVet LMS</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-mark" id="logo-letter">HV</div>
+      <div class="logo-text-wrap">
+        <div class="logo-text" id="app-name">HonorVet LMS</div>
+        <div class="logo-sub">Learning Platform</div>
+      </div>
+    </div>
+    <nav class="nav-section"><div class="nav-label">Menu</div><div id="nav-links"></div></nav>
+    <div class="sidebar-footer"><div class="user-chip" id="user-chip"></div></div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <div>
+        <div class="topbar-title">Learning Paths</div>
+        <div class="topbar-sub">Structured training bundles assigned to your role</div>
+      </div>
+      <div id="notif-bell-wrap"></div>
+    </header>
+
+    <div class="page">
+      <div id="paths-area"><div class="spinner"></div></div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="js/config.js"></script>
+<script src="js/db.js"></script>
+<script src="js/app.js"></script>
+<script>
+document.getElementById('logo-letter').textContent = APP_CONFIG.logoLetter;
+document.getElementById('app-name').textContent    = APP_CONFIG.appName;
+
+(async () => {
+  const user = await requireAuth();
+  if (!user) return;
+  renderNav('paths', user);
+  renderUserChip(user);
+  renderNotifBell(user.id, 'notif-bell-wrap');
+
+  const [myPaths, allCourses, myEnrollments] = await Promise.all([
+    LearningPaths.getMine(user.id),
+    Courses.getAll(),
+    Enrollments.getMine(user.id),
+  ]);
+
+  const area = document.getElementById('paths-area');
+
+  if (!myPaths.length) {
+    area.innerHTML = `<div class="empty-state">
+      <div class="empty-icon">🗂</div>
+      <strong>No learning paths assigned yet</strong>
+      <p>Your manager or admin will assign paths based on your role.</p>
+    </div>`;
+    return;
+  }
+
+  area.innerHTML = myPaths.map(path => {
+    const pathCourses = (path.learning_path_courses || [])
+      .sort((a, b) => a.position - b.position)
+      .map(pc => {
+        const course = allCourses.find(c => c.id === pc.course_id);
+        const enr    = myEnrollments.find(e => e.course_id === pc.course_id);
+        return course ? { ...course, enrollment: enr } : null;
+      }).filter(Boolean);
+
+    const total    = pathCourses.length;
+    const done     = pathCourses.filter(c => c.enrollment?.status === 'completed').length;
+    const pct      = total ? Math.round(done / total * 100) : 0;
+    const statusColor = pct === 100 ? 'var(--success)' : pct > 0 ? 'var(--brand)' : 'var(--text-dim)';
+
+    return `<div class="card" style="margin-bottom:20px;overflow:hidden">
+      <div style="padding:20px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+        <div style="display:flex;align-items:center;gap:14px">
+          <div style="font-size:32px">${path.icon || '🗂'}</div>
+          <div>
+            <div style="font-size:17px;font-weight:700">${path.title}</div>
+            ${path.description ? `<div style="font-size:13px;color:var(--text-muted);margin-top:2px">${path.description}</div>` : ''}
+            ${path.target_roles?.length ? `<div style="font-size:11.5px;color:var(--text-dim);margin-top:4px">Roles: ${path.target_roles.join(', ')}</div>` : ''}
+          </div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:24px;font-weight:800;color:${statusColor}">${pct}%</div>
+          <div style="font-size:12px;color:var(--text-muted)">${done} / ${total} courses</div>
+        </div>
+      </div>
+      <div style="padding:0 24px 8px">
+        <div class="progress-bar" style="height:4px;margin:0;border-radius:0">
+          <div class="progress-fill ${pct===100?'done':''}" style="width:${pct}%;background:${statusColor}"></div>
+        </div>
+      </div>
+      <div style="padding:8px 24px 20px">
+        ${pathCourses.length === 0
+          ? `<div style="padding:20px 0;color:var(--text-muted);font-size:13px;text-align:center">No courses in this path yet.</div>`
+          : pathCourses.map((c, idx) => {
+              const status = c.enrollment?.status || 'not_started';
+              const locked = idx > 0 && pathCourses[idx-1]?.enrollment?.status !== 'completed';
+              return `<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)${idx===pathCourses.length-1?';border:none':''}">
+                <div style="width:24px;height:24px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;
+                  background:${status==='completed'?'var(--success-bg)':locked?'var(--border)':'var(--brand-light)'};
+                  color:${status==='completed'?'var(--success)':locked?'var(--text-dim)':'var(--brand)'}">
+                  ${status === 'completed' ? '✓' : idx + 1}
+                </div>
+                <div style="flex:1;min-width:0">
+                  <div style="font-size:13.5px;font-weight:600;${locked?'color:var(--text-dim)':''}">${c.icon||'📖'} ${c.title}</div>
+                  <div style="font-size:11.5px;color:var(--text-dim);margin-top:1px">${c.duration_minutes||'?'} min · ${statusLabel(status)}</div>
+                </div>
+                <a href="course.html?id=${c.id}" class="btn btn-sm ${status==='completed'?'btn-ghost':'btn-primary'}" ${locked?'style="opacity:.4;pointer-events:none"':''}>
+                  ${status === 'completed' ? 'Review' : status === 'in_progress' ? 'Continue' : 'Start'}
+                </a>
+              </div>`;
+            }).join('')
+        }
+      </div>
+    </div>`;
+  }).join('');
+})();
+
+function statusLabel(s) {
+  return { completed: 'Completed', in_progress: 'In progress', not_started: 'Not started' }[s] || 'Not enrolled';
+}
+</script>
+</body>
+</html>

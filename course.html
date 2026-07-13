@@ -29,34 +29,64 @@
           <div class="topbar-sub" id="course-meta"></div>
         </div>
       </div>
-      <div class="topbar-actions" id="topbar-actions"></div>
+      <div id="notif-bell-wrap"></div>
     </header>
 
     <div class="page">
       <div style="display:grid;grid-template-columns:1fr 300px;gap:20px;align-items:start" id="layout">
-        <!-- Player -->
         <div>
           <div class="player-wrap" id="player-wrap">
             <div class="spinner"></div>
           </div>
         </div>
 
-        <!-- Sidebar info -->
         <div style="display:flex;flex-direction:column;gap:16px">
+          <!-- Progress card -->
           <div class="card card-body" id="progress-card">
             <div class="card-title">Your Progress</div>
-            <div style="margin:12px 0" id="progress-bar-wrap">
+            <div style="margin:12px 0">
               <div class="progress-bar"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
               <div style="font-size:12px;color:var(--text-muted);margin-top:6px" id="progress-label">Not started</div>
             </div>
+
+            <!-- Tracking gate (shown while unlocking) -->
+            <div id="tracking-gate" style="display:none;margin-bottom:14px">
+              <div id="tracking-msg" style="font-size:12.5px;color:var(--text-muted);margin-bottom:8px"></div>
+              <div id="time-gate-wrap" style="display:none">
+                <div class="progress-bar" style="height:6px;margin-bottom:4px">
+                  <div id="time-bar" class="progress-fill" style="width:0%;background:var(--brand)"></div>
+                </div>
+                <div id="time-label" style="font-size:11.5px;color:var(--text-dim)"></div>
+              </div>
+              <div id="ack-wrap" style="display:none;margin-top:4px">
+                <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;font-size:13px">
+                  <input type="checkbox" id="ack-checkbox" style="margin-top:2px;accent-color:var(--brand)" onchange="onAckChange()">
+                  I confirm I have completed this course content.
+                </label>
+              </div>
+            </div>
+
             <button class="btn btn-success" style="width:100%;justify-content:center" id="complete-btn" onclick="markComplete()" disabled>
               Mark as Complete ✓
             </button>
-            <div id="completed-msg" style="display:none;text-align:center;color:var(--success);font-size:13px;font-weight:600;margin-top:8px">
-              ✓ Completed
+            <div id="completed-msg" style="display:none;text-align:center;padding:10px 0">
+              <div style="color:var(--success);font-size:13px;font-weight:600">✓ Completed</div>
+              <div id="completed-date" style="font-size:11.5px;color:var(--text-muted);margin-top:2px"></div>
             </div>
           </div>
 
+          <!-- Certificate card (shown after completion) -->
+          <div class="card card-body" id="cert-card" style="display:none">
+            <div class="card-title">Certificate</div>
+            <div style="margin-top:10px;font-size:13px;color:var(--text-muted)">
+              You earned a certificate for this course.
+            </div>
+            <button class="btn btn-secondary btn-sm" style="margin-top:10px;width:100%;justify-content:center" onclick="downloadCertificate()">
+              Download Certificate
+            </button>
+          </div>
+
+          <!-- Course info -->
           <div class="card card-body" id="info-card">
             <div class="card-title">About this course</div>
             <div style="margin-top:10px;display:flex;flex-direction:column;gap:8px;font-size:13px;color:var(--text-muted)" id="course-info-rows"></div>
@@ -84,34 +114,31 @@ const params    = new URLSearchParams(location.search);
 const courseId  = params.get('id');
 let currentUser = null, enrollment = null, course = null;
 
+// Tracking state
+let trackTimer = null, trackSeconds = 0, trackMinSeconds = 0, trackUnlocked = false;
+
 (async () => {
   currentUser = await requireAuth();
   if (!currentUser) return;
   renderNav('catalog', currentUser);
   renderUserChip(currentUser);
+  renderNotifBell(currentUser.id, 'notif-bell-wrap');
 
   if (!courseId) { location.href = 'catalog.html'; return; }
-
   course = await Courses.getById(courseId);
   if (!course) { location.href = 'catalog.html'; return; }
 
   document.title = course.title + ' — HonorVet LMS';
   document.getElementById('course-title').textContent = course.title;
-  document.getElementById('course-meta').textContent  = `${course.duration_minutes || '?'} min · ${course.content_type?.toUpperCase()}`;
+  document.getElementById('course-meta').textContent  = `${course.duration_minutes || '?'} min · ${contentTypeLabel(course.content_type)}`;
 
-  // Ensure enrolled
-  try {
-    await Enrollments.enroll(currentUser.id, courseId);
-  } catch {}
+  try { await Enrollments.enroll(currentUser.id, courseId); } catch {}
 
-  // Get enrollment
   const enrs = await Enrollments.getMine(currentUser.id);
   enrollment  = enrs.find(e => e.course_id === courseId);
 
-  // Update progress UI
   updateProgressUI();
 
-  // Info card
   document.getElementById('course-info-rows').innerHTML = `
     <div><strong>Duration:</strong> ${course.duration_minutes || '?'} minutes</div>
     <div><strong>Type:</strong> ${contentTypeLabel(course.content_type)}</div>
@@ -119,61 +146,181 @@ let currentUser = null, enrollment = null, course = null;
     ${course.created_at ? `<div><strong>Added:</strong> ${fmtDate(course.created_at)}</div>` : ''}
   `;
 
-  // Tags
   if (course.tags?.length) {
     document.getElementById('tags-card').style.display = '';
     document.getElementById('tags-wrap').innerHTML = course.tags.map(t =>
       `<span class="badge badge-blue">${t}</span>`).join('');
   }
 
-  // Render content
   await renderPlayer(course);
 
-  // Mark in-progress if not already done
   if (enrollment?.status === 'not_started') {
-    await Enrollments.updateProgress(currentUser.id, courseId, 'in_progress', 50);
-    enrollment.status = 'in_progress';
-    enrollment.progress = 50;
+    await Enrollments.updateProgress(currentUser.id, courseId, 'in_progress', 10);
+    enrollment.status   = 'in_progress';
+    enrollment.progress = 10;
     updateProgressUI();
+  }
+
+  // Start tracking only if not already completed
+  if (enrollment?.status !== 'completed') {
+    startTracking(course);
   }
 })();
 
+// ── Progress UI ────────────────────────────────────────────────
 function updateProgressUI() {
   if (!enrollment) return;
-  const pct = enrollment.progress || 0;
-  document.getElementById('progress-fill').style.width = pct + '%';
-  document.getElementById('progress-fill').classList.toggle('done', enrollment.status === 'completed');
+  const fill = document.getElementById('progress-fill');
+  fill.style.width = (enrollment.progress || 0) + '%';
+  fill.classList.toggle('done', enrollment.status === 'completed');
 
   if (enrollment.status === 'completed') {
     document.getElementById('progress-label').textContent = `Completed on ${fmtDate(enrollment.completed_at)}`;
     document.getElementById('complete-btn').style.display = 'none';
     document.getElementById('completed-msg').style.display = '';
+    document.getElementById('completed-date').textContent  = fmtDate(enrollment.completed_at);
+    document.getElementById('tracking-gate').style.display = 'none';
+    document.getElementById('cert-card').style.display = '';
   } else {
     document.getElementById('progress-label').textContent = enrollment.status === 'in_progress' ? 'In progress' : 'Not started';
-    document.getElementById('complete-btn').disabled = false;
   }
 }
 
+// ── Tracking logic ─────────────────────────────────────────────
+function startTracking(course) {
+  const type = course.content_type;
+  document.getElementById('tracking-gate').style.display = '';
+
+  if (type === 'youtube') {
+    document.getElementById('tracking-msg').textContent = 'Watch the complete video to unlock completion.';
+    // Player handles unlock via onYouTubeVideoEnded()
+  } else if (type === 'link') {
+    document.getElementById('tracking-msg').textContent = 'Open the content, then confirm below to unlock completion.';
+    document.getElementById('ack-wrap').style.display = '';
+  } else {
+    // markdown / pdf — time gate
+    trackMinSeconds = Math.min(600, Math.max(120, Math.floor((course.duration_minutes || 10) * 60 * 0.2)));
+    document.getElementById('tracking-msg').textContent = 'Read the content to unlock completion.';
+    document.getElementById('time-gate-wrap').style.display = '';
+    updateTimeGateUI();
+    trackTimer = setInterval(() => {
+      trackSeconds = Math.min(trackSeconds + 1, trackMinSeconds);
+      updateTimeGateUI();
+      if (trackSeconds >= trackMinSeconds && !trackUnlocked) {
+        clearInterval(trackTimer);
+        unlockComplete();
+      }
+    }, 1000);
+  }
+}
+
+function updateTimeGateUI() {
+  const pct = trackMinSeconds > 0 ? Math.round(trackSeconds / trackMinSeconds * 100) : 0;
+  const remaining = Math.max(0, trackMinSeconds - trackSeconds);
+  const m = Math.floor(remaining / 60), s = remaining % 60;
+  document.getElementById('time-bar').style.width = pct + '%';
+  document.getElementById('time-label').textContent = remaining > 0
+    ? `${m}m ${s < 10 ? '0' : ''}${s}s remaining`
+    : '✓ Ready to complete!';
+  // Update overall progress bar proportionally while reading
+  if (enrollment && enrollment.status !== 'completed') {
+    const readingProgress = 10 + Math.floor(pct * 0.85);
+    document.getElementById('progress-fill').style.width = readingProgress + '%';
+    document.getElementById('progress-label').textContent = 'Reading…';
+  }
+}
+
+function unlockComplete() {
+  trackUnlocked = true;
+  clearInterval(trackTimer);
+  document.getElementById('tracking-gate').style.display = 'none';
+  document.getElementById('complete-btn').disabled = false;
+  document.getElementById('progress-fill').style.width = '95%';
+  document.getElementById('progress-label').textContent = 'Ready to mark complete';
+  toast('Content viewed — you can now mark this course complete.', 'success');
+}
+
+function onAckChange() {
+  if (document.getElementById('ack-checkbox').checked) unlockComplete();
+  else {
+    document.getElementById('complete-btn').disabled = true;
+    document.getElementById('tracking-gate').style.display = '';
+  }
+}
+
+function onYouTubeVideoEnded() {
+  unlockComplete();
+}
+
+// ── Mark complete ──────────────────────────────────────────────
 async function markComplete() {
   const btn = document.getElementById('complete-btn');
   btn.disabled = true; btn.textContent = 'Saving…';
   try {
     enrollment = await Enrollments.updateProgress(currentUser.id, courseId, 'completed', 100);
     updateProgressUI();
-    toast('Course marked complete! 🎉', 'success');
+    toast('Course completed! Certificate issued. 🎉', 'success');
   } catch(e) {
     toast(e.message, 'error');
     btn.disabled = false; btn.textContent = 'Mark as Complete ✓';
   }
 }
 
+function downloadCertificate() {
+  const name   = currentUser.name || currentUser.email;
+  const title  = course.title;
+  const date   = fmtDate(enrollment?.completed_at);
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+    <title>Certificate — ${title}</title>
+    <style>
+      body { font-family: Georgia, serif; background:#f8f5ee; margin:0; display:flex; align-items:center; justify-content:center; min-height:100vh; }
+      .cert { background:#fff; border:8px solid #1a56db; border-radius:12px; padding:60px 80px; max-width:700px; text-align:center; box-shadow:0 8px 40px rgba(0,0,0,.12); }
+      h1 { color:#1a56db; font-size:42px; margin:0 0 4px; letter-spacing:2px; }
+      .sub { color:#6b7280; font-size:14px; letter-spacing:3px; text-transform:uppercase; margin-bottom:40px; }
+      .body { color:#374151; font-size:18px; line-height:1.7; }
+      .name { font-size:32px; color:#1a1d23; font-weight:700; border-bottom:2px solid #1a56db; display:inline-block; padding-bottom:6px; margin:12px 0; }
+      .course { font-size:22px; color:#1a56db; font-style:italic; margin:12px 0; }
+      .date { color:#9ca3af; font-size:13px; margin-top:40px; }
+      .logo { font-size:13px; font-weight:700; color:#1a56db; letter-spacing:1px; margin-top:8px; }
+    </style></head><body>
+    <div class="cert">
+      <h1>Certificate</h1>
+      <div class="sub">of Completion</div>
+      <div class="body">This certifies that</div>
+      <div class="name">${name}</div>
+      <div class="body">has successfully completed</div>
+      <div class="course">${title}</div>
+      <div class="date">Completed on ${date}</div>
+      <div class="logo">HonorVet Technologies — Learning Platform</div>
+    </div></body></html>`;
+  const w = window.open('', '_blank');
+  w.document.write(html);
+  w.document.close();
+  w.print();
+}
+
+// ── Player ─────────────────────────────────────────────────────
 async function renderPlayer(course) {
   const wrap = document.getElementById('player-wrap');
 
   if (course.content_type === 'youtube') {
     const videoId = extractYouTubeId(course.content_url);
     if (videoId) {
-      wrap.innerHTML = `<iframe class="player-embed" src="https://www.youtube.com/embed/${videoId}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`;
+      wrap.innerHTML = `<div id="yt-player-div"></div>`;
+      const tag = document.createElement('script');
+      tag.src = 'https://www.youtube.com/iframe_api';
+      document.head.appendChild(tag);
+      window._ytVideoId = videoId;
+      window.onYouTubeIframeAPIReady = () => {
+        new YT.Player('yt-player-div', {
+          videoId,
+          width: '100%',
+          height: '460',
+          playerVars: { rel: 0, modestbranding: 1 },
+          events: { onStateChange: e => { if (e.data === YT.PlayerState.ENDED) onYouTubeVideoEnded(); } }
+        });
+      };
+      if (window.YT && window.YT.Player) window.onYouTubeIframeAPIReady();
       return;
     }
   }
@@ -188,34 +335,30 @@ async function renderPlayer(course) {
       <div style="padding:40px;text-align:center">
         <div style="font-size:48px;margin-bottom:16px">🔗</div>
         <p style="font-size:15px;color:var(--text-muted);margin-bottom:20px">This course opens in an external resource.</p>
-        <a href="${course.content_url}" target="_blank" rel="noopener" class="btn btn-primary btn-lg" onclick="markInProgress()">
-          Open Course ↗
-        </a>
+        <a href="${course.content_url}" target="_blank" rel="noopener" class="btn btn-primary btn-lg">Open Content ↗</a>
         <p style="margin-top:16px;font-size:12px;color:var(--text-dim)">${course.content_url}</p>
       </div>`;
     return;
   }
 
   if (course.content_type === 'markdown' && course.content_url?.includes('github.com')) {
-    wrap.innerHTML = `<div style="padding:24px;color:var(--text-muted);font-size:14px">Fetching content from GitHub…</div>`;
+    wrap.innerHTML = `<div style="padding:24px;color:var(--text-muted);font-size:14px">Loading content from GitHub…</div>`;
     try {
       const md = await fetchGithubReadme(course.content_url);
       if (md) {
-        wrap.innerHTML = `<div class="player-markdown">${markdownToHtml(md)}</div>`;
+        wrap.innerHTML = `<div class="player-markdown" id="md-content">${markdownToHtml(md)}</div>`;
         return;
       }
     } catch {}
-    // Fallback: show link to repo
     wrap.innerHTML = `
       <div style="padding:40px;text-align:center">
         <div style="font-size:48px;margin-bottom:16px">📂</div>
-        <p style="color:var(--text-muted);margin-bottom:20px">Could not load content automatically.<br>Open the repository directly:</p>
+        <p style="color:var(--text-muted);margin-bottom:20px">Could not load content automatically. Open the repository directly:</p>
         <a href="${course.content_url}" target="_blank" rel="noopener" class="btn btn-primary btn-lg">Open on GitHub ↗</a>
       </div>`;
     return;
   }
 
-  // Generic fallback
   wrap.innerHTML = `
     <div style="padding:40px;text-align:center">
       <div style="font-size:48px;margin-bottom:16px">${course.icon || '📖'}</div>
@@ -232,7 +375,7 @@ function extractYouTubeId(url) {
 }
 
 function contentTypeLabel(t) {
-  return { markdown: 'GitHub Repo', pdf: 'PDF Document', youtube: 'Video', link: 'External Link', scorm: 'SCORM Package' }[t] || t || 'Unknown';
+  return { markdown: 'GitHub Repo', pdf: 'PDF Document', youtube: 'Video', link: 'External Link' }[t] || t || 'Unknown';
 }
 </script>
 </body>

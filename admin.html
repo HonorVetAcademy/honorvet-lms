@@ -26,20 +26,31 @@
         <div class="topbar-title">Manage Courses</div>
         <div class="topbar-sub">Add, edit, and organise your training content</div>
       </div>
-      <div class="topbar-actions">
-        <button class="btn btn-primary" onclick="openAddModal()">+ Add Course</button>
+      <div class="topbar-actions" style="display:flex;align-items:center;gap:10px">
+        <div id="notif-bell-wrap"></div>
+        <button class="btn btn-primary" id="topbar-add-btn" onclick="topbarAdd()">+ Add Course</button>
       </div>
     </header>
 
     <div class="page">
-      <div class="alert alert-info" style="margin-bottom:20px">
-        <strong>How courses work:</strong> Each course entry points to a URL — a GitHub repo README,
-        a YouTube video, a PDF, or any external link. To add a new course, click <strong>+ Add Course</strong>,
-        paste the URL, and save. The change updates <code>data/courses.json</code> in your repo.
+      <div class="admin-tabs">
+        <button class="admin-tab active" onclick="switchAdminTab('courses', this)">Courses</button>
+        <button class="admin-tab" onclick="switchAdminTab('paths', this)">Learning Paths</button>
       </div>
 
-      <div class="table-wrap" id="courses-table-wrap">
-        <div class="spinner"></div>
+      <!-- Courses tab -->
+      <div id="tab-courses">
+        <div class="table-wrap" id="courses-table-wrap">
+          <div class="spinner"></div>
+        </div>
+      </div>
+
+      <!-- Learning Paths tab -->
+      <div id="tab-paths" style="display:none">
+        <div style="display:flex;justify-content:flex-end;margin-bottom:16px">
+          <button class="btn btn-primary" onclick="openPathModal()">+ New Path</button>
+        </div>
+        <div id="paths-table-wrap"><div class="spinner"></div></div>
       </div>
     </div>
   </div>
@@ -159,6 +170,105 @@
   </div>
 </div>
 
+<!-- Path modal -->
+<div class="modal-overlay" id="path-modal">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-header">
+      <span class="modal-title" id="path-modal-title">New Learning Path</span>
+      <button class="modal-close" onclick="closeModal('path-modal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="path-modal-alert"></div>
+      <input type="hidden" id="p-id">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        <div class="form-group" style="grid-column:1/-1">
+          <label class="form-label">Path title *</label>
+          <input class="form-input" id="p-title" placeholder="e.g. New Employee Onboarding">
+        </div>
+        <div class="form-group" style="grid-column:1/-1">
+          <label class="form-label">Description</label>
+          <textarea class="form-textarea" id="p-desc" placeholder="What is this path for?"></textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Icon (emoji)</label>
+          <input class="form-input" id="p-icon" placeholder="🗂" maxlength="4">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Target roles (comma separated)</label>
+          <input class="form-input" id="p-roles" placeholder="employee, manager">
+        </div>
+        <div class="form-group" style="grid-column:1/-1">
+          <label class="form-label">Target departments (comma separated)</label>
+          <input class="form-input" id="p-depts" placeholder="Operations, HR">
+        </div>
+        <div class="form-group" style="grid-column:1/-1">
+          <label class="form-label">Courses in this path (select in order)</label>
+          <div id="path-course-list" style="border:1px solid var(--border);border-radius:8px;max-height:200px;overflow-y:auto;padding:4px">
+            <div style="padding:10px;color:var(--text-muted);font-size:13px">Loading courses…</div>
+          </div>
+          <div class="form-hint">Check courses in the order you want them completed.</div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('path-modal')">Cancel</button>
+      <button class="btn btn-primary" id="path-save-btn" onclick="savePath()">Save Path</button>
+    </div>
+  </div>
+</div>
+
+<!-- Path assign modal -->
+<div class="modal-overlay" id="path-assign-modal">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-header">
+      <span class="modal-title">Assign Learning Path</span>
+      <button class="modal-close" onclick="closeModal('path-assign-modal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="path-assign-alert"></div>
+      <input type="hidden" id="pa-path-id">
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:14px" id="pa-path-name"></p>
+      <div class="form-group">
+        <label class="form-label">Assign to</label>
+        <select class="form-select" id="pa-scope" onchange="onPaScopeChange()">
+          <option value="all">All employees</option>
+          <option value="department">Specific department</option>
+          <option value="role">Specific role</option>
+          <option value="users">Pick individual users</option>
+        </select>
+      </div>
+      <div class="form-group" id="pa-dept-group" style="display:none">
+        <label class="form-label">Department</label>
+        <input class="form-input" id="pa-dept" placeholder="e.g. Operations">
+      </div>
+      <div class="form-group" id="pa-role-group" style="display:none">
+        <label class="form-label">Role</label>
+        <select class="form-select" id="pa-role">
+          <option value="employee">Employee</option>
+          <option value="manager">Manager</option>
+          <option value="trainer">Trainer</option>
+          <option value="hr">HR</option>
+        </select>
+      </div>
+      <div id="pa-users-group" style="display:none">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <label class="form-label" style="margin:0">Select users</label>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-ghost btn-sm" onclick="toggleAllPaUsers(true)">Select all</button>
+            <button class="btn btn-ghost btn-sm" onclick="toggleAllPaUsers(false)">Clear</button>
+          </div>
+        </div>
+        <input class="form-input" id="pa-user-search" placeholder="Search…" oninput="filterPaUserList()" style="margin-bottom:8px">
+        <div id="pa-user-checklist" style="max-height:200px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:4px"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('path-assign-modal')">Cancel</button>
+      <button class="btn btn-primary" id="pa-assign-btn" onclick="doPathAssign()">Assign</button>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="js/config.js"></script>
 <script src="js/db.js"></script>
@@ -223,6 +333,7 @@ function updateSelectedCount() {
   if (!user) return;
   renderNav('admin', user);
   renderUserChip(user);
+  renderNotifBell(user.id, 'notif-bell-wrap');
   await loadCourses();
 })();
 
@@ -392,6 +503,191 @@ async function doAssign() {
     }
     await Enrollments.bulkAssign(courseId, ids);
     alertEl.innerHTML = `<div class="alert alert-success">✓ Assigned to ${ids.length} user${ids.length>1?'s':''}.</div>`;
+    btn.textContent = 'Done ✓';
+  } catch(e) {
+    alertEl.innerHTML = `<div class="alert alert-error">${e.message}</div>`;
+    btn.disabled = false; btn.textContent = 'Assign';
+  }
+}
+
+// ── Tab switching ──────────────────────────────────────────────
+function switchAdminTab(tab, btn) {
+  document.querySelectorAll('.admin-tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('tab-courses').style.display = tab === 'courses' ? '' : 'none';
+  document.getElementById('tab-paths').style.display   = tab === 'paths'   ? '' : 'none';
+  document.getElementById('topbar-add-btn').textContent = tab === 'courses' ? '+ Add Course' : '+ New Path';
+  document.getElementById('topbar-add-btn').onclick     = tab === 'courses' ? openAddModal : openPathModal;
+  if (tab === 'paths') loadPaths();
+}
+
+function topbarAdd() { openAddModal(); }
+
+// ── Learning Paths ─────────────────────────────────────────────
+let allPaths = [];
+
+async function loadPaths() {
+  allPaths = await LearningPaths.getAll();
+  renderPathsTable();
+}
+
+function renderPathsTable() {
+  const wrap = document.getElementById('paths-table-wrap');
+  if (!allPaths.length) {
+    wrap.innerHTML = `<div class="empty-state"><div class="empty-icon">🗂</div><strong>No learning paths yet</strong><p>Create a path to bundle courses for a specific role or department.</p></div>`;
+    return;
+  }
+  wrap.innerHTML = `<table>
+    <thead><tr><th></th><th>Path</th><th>Courses</th><th>Target Roles</th><th>Target Depts</th><th></th></tr></thead>
+    <tbody>${allPaths.map(p => `<tr>
+      <td style="font-size:22px;text-align:center;padding:8px 12px">${p.icon||'🗂'}</td>
+      <td>
+        <div style="font-weight:600">${p.title}</div>
+        <div style="font-size:12px;color:var(--text-muted)">${p.description||''}</div>
+      </td>
+      <td>${(p.learning_path_courses||[]).length} courses</td>
+      <td style="font-size:12px;color:var(--text-muted)">${(p.target_roles||[]).join(', ')||'—'}</td>
+      <td style="font-size:12px;color:var(--text-muted)">${(p.target_depts||[]).join(', ')||'—'}</td>
+      <td>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-ghost btn-sm" onclick="openPathAssignModal('${p.id}','${escQ(p.title)}')">Assign</button>
+          <button class="btn btn-ghost btn-sm" onclick="openPathModal(${JSON.stringify(p).replace(/"/g,'&quot;')})">Edit</button>
+          <button class="btn btn-ghost btn-sm" style="color:var(--danger)" onclick="deletePath('${p.id}','${escQ(p.title)}')">Delete</button>
+        </div>
+      </td>
+    </tr>`).join('')}</tbody>
+  </table>`;
+}
+
+async function openPathModal(path) {
+  document.getElementById('path-modal-title').textContent = path?.id ? 'Edit Learning Path' : 'New Learning Path';
+  document.getElementById('p-id').value    = path?.id    || '';
+  document.getElementById('p-title').value = path?.title || '';
+  document.getElementById('p-desc').value  = path?.description || '';
+  document.getElementById('p-icon').value  = path?.icon  || '';
+  document.getElementById('p-roles').value = (path?.target_roles||[]).join(', ');
+  document.getElementById('p-depts').value = (path?.target_depts||[]).join(', ');
+  document.getElementById('path-modal-alert').innerHTML = '';
+
+  // Populate course checklist
+  const existingCourseIds = (path?.learning_path_courses||[]).sort((a,b)=>a.position-b.position).map(pc=>pc.course_id);
+  const allC = await Courses.getAll();
+  const list = document.getElementById('path-course-list');
+  list.innerHTML = allC.map(c => `
+    <label style="display:flex;align-items:center;gap:10px;padding:8px 10px;cursor:pointer;border-radius:6px">
+      <input type="checkbox" class="path-course-chk" data-id="${c.id}" style="accent-color:var(--brand)" ${existingCourseIds.includes(c.id)?'checked':''}>
+      <span style="font-size:13px">${c.icon||'📖'} ${c.title}</span>
+    </label>`).join('');
+  openModal('path-modal');
+}
+
+async function savePath() {
+  const btn   = document.getElementById('path-save-btn');
+  const alert = document.getElementById('path-modal-alert');
+  const title = document.getElementById('p-title').value.trim();
+  if (!title) { alert.innerHTML = '<div class="alert alert-error">Title is required.</div>'; return; }
+
+  const selectedCourseIds = Array.from(document.querySelectorAll('.path-course-chk:checked')).map(cb=>cb.dataset.id);
+  const path = {
+    id:           document.getElementById('p-id').value || 'path-' + Date.now(),
+    title,
+    description:  document.getElementById('p-desc').value.trim(),
+    icon:         document.getElementById('p-icon').value.trim() || '🗂',
+    target_roles: document.getElementById('p-roles').value.split(',').map(s=>s.trim()).filter(Boolean),
+    target_depts: document.getElementById('p-depts').value.split(',').map(s=>s.trim()).filter(Boolean),
+  };
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    const saved = await LearningPaths.upsert(path);
+    await LearningPaths.setCourses(saved.id, selectedCourseIds);
+    await loadPaths();
+    closeModal('path-modal');
+    toast('Learning path saved!', 'success');
+  } catch(e) {
+    alert.innerHTML = `<div class="alert alert-error">${e.message}</div>`;
+  }
+  btn.disabled = false; btn.textContent = 'Save Path';
+}
+
+async function deletePath(id, title) {
+  if (!confirm(`Delete path "${title}"?`)) return;
+  try { await LearningPaths.remove(id); await loadPaths(); toast('Path deleted.', 'success'); }
+  catch(e) { toast(e.message, 'error'); }
+}
+
+// ── Path assign ────────────────────────────────────────────────
+let paUsersCache = [];
+
+function openPathAssignModal(pathId, pathTitle) {
+  document.getElementById('pa-path-id').value = pathId;
+  document.getElementById('pa-path-name').textContent = 'Path: ' + pathTitle;
+  document.getElementById('path-assign-alert').innerHTML = '';
+  document.getElementById('pa-assign-btn').disabled = false;
+  document.getElementById('pa-assign-btn').textContent = 'Assign';
+  openModal('path-assign-modal');
+}
+
+function onPaScopeChange() {
+  const v = document.getElementById('pa-scope').value;
+  document.getElementById('pa-dept-group').style.display  = v === 'department' ? '' : 'none';
+  document.getElementById('pa-role-group').style.display  = v === 'role'       ? '' : 'none';
+  document.getElementById('pa-users-group').style.display = v === 'users'      ? '' : 'none';
+  if (v === 'users') buildPaUserChecklist();
+}
+
+async function buildPaUserChecklist() {
+  const list = document.getElementById('pa-user-checklist');
+  list.innerHTML = '<div style="padding:12px;color:var(--text-muted);font-size:13px">Loading…</div>';
+  paUsersCache = await Users.getAll();
+  renderPaUserChecklist(paUsersCache);
+}
+
+function renderPaUserChecklist(users) {
+  const list = document.getElementById('pa-user-checklist');
+  list.innerHTML = users.map(u => `
+    <label style="display:flex;align-items:center;gap:10px;padding:8px 10px;cursor:pointer;border-radius:6px">
+      <input type="checkbox" class="pa-user-chk" data-id="${u.id}" style="accent-color:var(--brand)">
+      <div>
+        <div style="font-size:13px;font-weight:600">${u.name||'—'}</div>
+        <div style="font-size:11.5px;color:var(--text-muted)">${u.email} · ${u.role}${u.department?' · '+u.department:''}</div>
+      </div>
+    </label>`).join('');
+}
+
+function filterPaUserList() {
+  const q = document.getElementById('pa-user-search').value.toLowerCase();
+  renderPaUserChecklist(paUsersCache.filter(u => (u.name||'').toLowerCase().includes(q) || (u.email||'').toLowerCase().includes(q)));
+}
+
+function toggleAllPaUsers(checked) {
+  document.querySelectorAll('.pa-user-chk').forEach(cb => cb.checked = checked);
+}
+
+async function doPathAssign() {
+  const btn    = document.getElementById('pa-assign-btn');
+  const alertEl = document.getElementById('path-assign-alert');
+  const pathId  = document.getElementById('pa-path-id').value;
+  const scope   = document.getElementById('pa-scope').value;
+  btn.disabled = true; btn.textContent = 'Assigning…';
+  try {
+    let ids = [];
+    if (scope === 'users') {
+      ids = Array.from(document.querySelectorAll('.pa-user-chk:checked')).map(cb => cb.dataset.id);
+      if (!ids.length) throw new Error('Select at least one user.');
+    } else {
+      let users = await Users.getAll();
+      if (scope === 'department') {
+        const dept = document.getElementById('pa-dept').value.trim();
+        if (!dept) throw new Error('Enter a department name.');
+        users = users.filter(u => u.department?.toLowerCase() === dept.toLowerCase());
+      } else if (scope === 'role') {
+        users = users.filter(u => u.role === document.getElementById('pa-role').value);
+      }
+      ids = users.map(u => u.id);
+      if (!ids.length) throw new Error('No users found for this filter.');
+    }
+    await LearningPaths.assign(pathId, ids);
+    alertEl.innerHTML = `<div class="alert alert-success">✓ Path assigned to ${ids.length} user${ids.length>1?'s':''}. They have been enrolled in all courses and notified.</div>`;
     btn.textContent = 'Done ✓';
   } catch(e) {
     alertEl.innerHTML = `<div class="alert alert-error">${e.message}</div>`;
