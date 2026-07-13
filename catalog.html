@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Course Catalog — HonorVet LMS</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-mark" id="logo-letter">HV</div>
+      <div class="logo-text-wrap">
+        <div class="logo-text" id="app-name">HonorVet LMS</div>
+        <div class="logo-sub">Learning Platform</div>
+      </div>
+    </div>
+    <nav class="nav-section"><div class="nav-label">Menu</div><div id="nav-links"></div></nav>
+    <div class="sidebar-footer"><div class="user-chip" id="user-chip"></div></div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <div>
+        <div class="topbar-title">Course Catalog</div>
+        <div class="topbar-sub">Browse and enroll in available training</div>
+      </div>
+      <div class="topbar-actions">
+        <input class="form-input" type="search" id="search" placeholder="Search courses…" style="width:220px">
+        <select class="form-select" id="filter-tag" style="width:160px">
+          <option value="">All categories</option>
+        </select>
+      </div>
+    </header>
+
+    <div class="page">
+      <div id="mandatory-section" style="margin-bottom:28px;display:none">
+        <div class="section-head"><div class="section-title">⚠️ Mandatory Training</div></div>
+        <div class="course-grid" id="mandatory-grid"></div>
+      </div>
+
+      <div class="section-head">
+        <div class="section-title">All Courses</div>
+        <span id="course-count" style="font-size:13px;color:var(--text-muted)"></span>
+      </div>
+      <div id="courses-area"><div class="spinner"></div></div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="js/config.js"></script>
+<script src="js/db.js"></script>
+<script src="js/app.js"></script>
+<script>
+document.getElementById('logo-letter').textContent = APP_CONFIG.logoLetter;
+document.getElementById('app-name').textContent = APP_CONFIG.appName;
+
+let allCourses = [], myEnrollments = [], currentUser = null;
+
+(async () => {
+  currentUser = await requireAuth();
+  if (!currentUser) return;
+  renderNav('catalog', currentUser);
+  renderUserChip(currentUser);
+
+  [allCourses, myEnrollments] = await Promise.all([
+    Courses.getAll(),
+    Enrollments.getMine(currentUser.id),
+  ]);
+
+  // Populate tag filter
+  const tags = [...new Set(allCourses.flatMap(c => c.tags || []))].sort();
+  const sel = document.getElementById('filter-tag');
+  tags.forEach(t => { const o = document.createElement('option'); o.value = t; o.textContent = t; sel.appendChild(o); });
+
+  renderAll();
+
+  document.getElementById('search').oninput = renderAll;
+  sel.onchange = renderAll;
+})();
+
+function getEnrollment(courseId) {
+  return myEnrollments.find(e => e.course_id === courseId);
+}
+
+function renderAll() {
+  const q   = document.getElementById('search').value.toLowerCase();
+  const tag = document.getElementById('filter-tag').value;
+
+  const filtered = allCourses.filter(c => {
+    const matchQ   = !q   || c.title.toLowerCase().includes(q) || (c.description||'').toLowerCase().includes(q);
+    const matchTag = !tag || (c.tags||[]).includes(tag);
+    return matchQ && matchTag;
+  });
+
+  document.getElementById('course-count').textContent = `${filtered.length} course${filtered.length !== 1 ? 's' : ''}`;
+
+  const mandatory = filtered.filter(c => c.is_mandatory);
+  const mandSec   = document.getElementById('mandatory-section');
+  if (mandatory.length && !q && !tag) {
+    mandSec.style.display = '';
+    document.getElementById('mandatory-grid').innerHTML = mandatory.map(c => courseCard(c)).join('');
+  } else {
+    mandSec.style.display = 'none';
+  }
+
+  const area = document.getElementById('courses-area');
+  if (filtered.length === 0) {
+    area.innerHTML = `<div class="empty-state"><div class="empty-icon">🔍</div><strong>No courses match your search</strong><p>Try a different keyword or category.</p></div>`;
+  } else {
+    area.innerHTML = `<div class="course-grid">${filtered.map(c => courseCard(c)).join('')}</div>`;
+  }
+}
+
+function courseCard(course) {
+  const enr    = getEnrollment(course.id);
+  const status = enr?.status || 'not_enrolled';
+  const icon   = course.icon || '📖';
+  const actionLabel = status === 'completed' ? 'Review' : status === 'in_progress' ? 'Continue' : status === 'not_started' ? 'Start' : 'Enroll';
+  const actionClass = status === 'not_enrolled' ? 'btn-secondary' : 'btn-primary';
+
+  return `<div class="course-card">
+    <div class="course-card-header">
+      <span class="course-icon">${icon}</span>
+      ${course.is_mandatory ? '<span class="mandatory-tag">MANDATORY</span>' : ''}
+    </div>
+    <div class="course-card-body">
+      <div class="course-card-title">${course.title}</div>
+      <div class="course-card-desc">${course.description || ''}</div>
+      <div class="course-card-meta">
+        <span>⏱ ${course.duration_minutes || '?'} min</span>
+        ${enr ? statusBadge(status) : '<span class="badge badge-gray">Not enrolled</span>'}
+      </div>
+    </div>
+    <div class="course-card-footer">
+      <span style="font-size:12px;color:var(--text-dim)">${(course.tags||[]).slice(0,2).join(' · ')}</span>
+      <button class="btn ${actionClass} btn-sm" onclick="handleAction('${course.id}', '${status}')">${actionLabel}</button>
+    </div>
+  </div>`;
+}
+
+async function handleAction(courseId, status) {
+  if (status === 'not_enrolled') {
+    try {
+      await Enrollments.enroll(currentUser.id, courseId);
+      myEnrollments = await Enrollments.getMine(currentUser.id);
+      renderAll();
+      toast('Enrolled! Starting your course…', 'success');
+      setTimeout(() => window.location.href = `course.html?id=${courseId}`, 800);
+    } catch(e) { toast(e.message, 'error'); }
+  } else {
+    window.location.href = `course.html?id=${courseId}`;
+  }
+}
+</script>
+</body>
+</html>

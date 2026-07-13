@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard — HonorVet LMS</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="shell">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-mark" id="logo-letter">HV</div>
+      <div class="logo-text-wrap">
+        <div class="logo-text" id="app-name">HonorVet LMS</div>
+        <div class="logo-sub">Learning Platform</div>
+      </div>
+    </div>
+    <nav class="nav-section">
+      <div class="nav-label">Menu</div>
+      <div id="nav-links"></div>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="user-chip" id="user-chip"></div>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <div class="main">
+    <header class="topbar">
+      <div>
+        <div class="topbar-title" id="welcome-title">Dashboard</div>
+        <div class="topbar-sub" id="welcome-sub">Here's your learning summary</div>
+      </div>
+      <div class="topbar-actions">
+        <a href="catalog.html" class="btn btn-primary">${iconPlus_inline()} Browse Courses</a>
+      </div>
+    </header>
+
+    <div class="page">
+      <!-- Stats -->
+      <div class="stats-grid" id="stats-grid">
+        <div class="stat-card"><div class="stat-label">Enrolled</div><div class="stat-value" id="stat-enrolled">—</div><div class="stat-sub">courses assigned</div></div>
+        <div class="stat-card"><div class="stat-label">Completed</div><div class="stat-value" id="stat-completed">—</div><div class="stat-sub">courses finished</div></div>
+        <div class="stat-card"><div class="stat-label">In Progress</div><div class="stat-value" id="stat-inprogress">—</div><div class="stat-sub">currently active</div></div>
+        <div class="stat-card"><div class="stat-label">Compliance</div><div class="stat-value" id="stat-compliance">—</div><div class="stat-sub">mandatory completion</div></div>
+      </div>
+
+      <!-- My courses -->
+      <div class="section-head">
+        <div class="section-title">My Courses</div>
+        <a href="catalog.html" class="btn btn-ghost btn-sm">View all →</a>
+      </div>
+
+      <div id="my-courses-area">
+        <div class="spinner"></div>
+      </div>
+
+      <!-- Admin org stats (shown for admin/hr/manager) -->
+      <div id="org-stats-section" style="display:none;margin-top:32px;">
+        <div class="section-head">
+          <div class="section-title">Organization Overview</div>
+          <a href="reports.html" class="btn btn-ghost btn-sm">Full reports →</a>
+        </div>
+        <div class="stats-grid" id="org-stats-grid">
+          <div class="stat-card"><div class="stat-label">Total Users</div><div class="stat-value" id="org-users">—</div></div>
+          <div class="stat-card"><div class="stat-label">Total Courses</div><div class="stat-value" id="org-courses">—</div></div>
+          <div class="stat-card"><div class="stat-label">Completions</div><div class="stat-value" id="org-completed">—</div></div>
+          <div class="stat-card"><div class="stat-label">Org Compliance</div><div class="stat-value" id="org-compliance">—</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="js/config.js"></script>
+<script src="js/db.js"></script>
+<script src="js/app.js"></script>
+<script>
+function iconPlus_inline() { return ''; }
+
+document.getElementById('logo-letter').textContent = APP_CONFIG.logoLetter;
+document.getElementById('app-name').textContent    = APP_CONFIG.appName;
+
+(async () => {
+  const user = await requireAuth();
+  if (!user) return;
+
+  document.getElementById('welcome-title').textContent = `Good day, ${user.name?.split(' ')[0] || 'there'} 👋`;
+  renderNav('dashboard', user);
+  renderUserChip(user);
+
+  // Load enrollments + courses in parallel
+  const [enrollments, courses] = await Promise.all([
+    Enrollments.getMine(user.id),
+    Courses.getAll(),
+  ]);
+
+  const completed  = enrollments.filter(e => e.status === 'completed').length;
+  const inProgress = enrollments.filter(e => e.status === 'in_progress').length;
+  const mandatory  = courses.filter(c => c.is_mandatory);
+  const mandatoryEnrolled = enrollments.filter(e => mandatory.some(m => m.id === e.course_id));
+  const compliance = mandatoryEnrolled.length
+    ? Math.round(mandatoryEnrolled.filter(e => e.status === 'completed').length / mandatoryEnrolled.length * 100)
+    : (mandatory.length === 0 ? 100 : 0);
+
+  document.getElementById('stat-enrolled').textContent   = enrollments.length;
+  document.getElementById('stat-completed').textContent  = completed;
+  document.getElementById('stat-inprogress').textContent = inProgress;
+  document.getElementById('stat-compliance').textContent = compliance + '%';
+
+  // Render enrolled courses
+  const area = document.getElementById('my-courses-area');
+  if (enrollments.length === 0) {
+    area.innerHTML = `<div class="empty-state"><div class="empty-icon">📚</div><strong>No courses yet</strong><p>Browse the catalog to find and enroll in training.</p><a href="catalog.html" class="btn btn-primary" style="margin-top:14px;">Browse Catalog</a></div>`;
+  } else {
+    const enrolledCourses = enrollments.map(e => {
+      const c = courses.find(c => c.id === e.course_id);
+      return c ? { ...c, enrollment: e } : null;
+    }).filter(Boolean);
+
+    area.innerHTML = `<div class="course-grid">${enrolledCourses.map(c => courseCard(c, c.enrollment)).join('')}</div>`;
+  }
+
+  // Org stats for admin/hr/manager
+  if (['admin','hr','manager'].includes(user.role)) {
+    document.getElementById('org-stats-section').style.display = '';
+    try {
+      const overview = await Reports.getOverview();
+      document.getElementById('org-users').textContent     = overview.totalUsers;
+      document.getElementById('org-courses').textContent   = overview.totalCourses;
+      document.getElementById('org-completed').textContent = overview.completed;
+      document.getElementById('org-compliance').textContent= overview.complianceRate + '%';
+    } catch(e) { console.warn('Could not load org stats', e); }
+  }
+})();
+
+function courseCard(course, enrollment) {
+  const status = enrollment?.status || 'not_started';
+  const pct = enrollment?.progress || 0;
+  const icon = course.icon || '📖';
+  return `
+    <div class="course-card">
+      <div class="course-card-header" style="background:linear-gradient(135deg,#1a56db,#3b82f6)">
+        <span class="course-icon">${icon}</span>
+        ${course.is_mandatory ? '<span class="mandatory-tag">MANDATORY</span>' : ''}
+      </div>
+      <div class="course-card-body">
+        <div class="course-card-title">${course.title}</div>
+        <div class="course-card-desc">${course.description || ''}</div>
+        <div class="course-card-meta">
+          <span>⏱ ${course.duration_minutes || '?'} min</span>
+          ${statusBadge(status)}
+        </div>
+        ${status !== 'not_started' ? `<div style="margin-top:10px"><div class="progress-bar"><div class="progress-fill ${status==='completed'?'done':''}" style="width:${pct}%"></div></div></div>` : ''}
+      </div>
+      <div class="course-card-footer">
+        <span style="font-size:12px;color:var(--text-dim)">${course.tags?.slice(0,2).join(' · ') || ''}</span>
+        <a href="course.html?id=${course.id}" class="btn btn-primary btn-sm">${status === 'completed' ? 'Review' : status === 'in_progress' ? 'Continue' : 'Start'}</a>
+      </div>
+    </div>`;
+}
+</script>
+</body>
+</html>

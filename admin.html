@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Manage Courses — HonorVet LMS</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-mark" id="logo-letter">HV</div>
+      <div class="logo-text-wrap">
+        <div class="logo-text" id="app-name">HonorVet LMS</div>
+        <div class="logo-sub">Learning Platform</div>
+      </div>
+    </div>
+    <nav class="nav-section"><div class="nav-label">Menu</div><div id="nav-links"></div></nav>
+    <div class="sidebar-footer"><div class="user-chip" id="user-chip"></div></div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <div>
+        <div class="topbar-title">Manage Courses</div>
+        <div class="topbar-sub">Add, edit, and organise your training content</div>
+      </div>
+      <div class="topbar-actions">
+        <button class="btn btn-primary" onclick="openAddModal()">+ Add Course</button>
+      </div>
+    </header>
+
+    <div class="page">
+      <div class="alert alert-info" style="margin-bottom:20px">
+        <strong>How courses work:</strong> Each course entry points to a URL — a GitHub repo README,
+        a YouTube video, a PDF, or any external link. To add a new course, click <strong>+ Add Course</strong>,
+        paste the URL, and save. The change updates <code>data/courses.json</code> in your repo.
+      </div>
+
+      <div class="table-wrap" id="courses-table-wrap">
+        <div class="spinner"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Add / Edit Course Modal -->
+<div class="modal-overlay" id="course-modal">
+  <div class="modal" style="max-width:580px">
+    <div class="modal-header">
+      <span class="modal-title" id="modal-title">Add Course</span>
+      <button class="modal-close" onclick="closeModal('course-modal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="modal-alert"></div>
+      <input type="hidden" id="edit-id">
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        <div class="form-group" style="grid-column:1/-1">
+          <label class="form-label">Course title *</label>
+          <input class="form-input" id="f-title" placeholder="e.g. Workplace Safety Fundamentals">
+        </div>
+        <div class="form-group" style="grid-column:1/-1">
+          <label class="form-label">Description</label>
+          <textarea class="form-textarea" id="f-desc" placeholder="What will employees learn from this course?"></textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Content type *</label>
+          <select class="form-select" id="f-type" onchange="updateTypeHint()">
+            <option value="markdown">GitHub Repository</option>
+            <option value="youtube">YouTube Video</option>
+            <option value="pdf">PDF Document</option>
+            <option value="link">External Link</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Icon (emoji)</label>
+          <input class="form-input" id="f-icon" placeholder="e.g. 🦺" maxlength="4">
+        </div>
+        <div class="form-group" style="grid-column:1/-1">
+          <label class="form-label">Content URL *</label>
+          <input class="form-input" id="f-url" placeholder="">
+          <div class="form-hint" id="url-hint"></div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Duration (minutes)</label>
+          <input class="form-input" type="number" id="f-duration" placeholder="30" min="1">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Tags (comma separated)</label>
+          <input class="form-input" id="f-tags" placeholder="safety, mandatory, hr">
+        </div>
+        <div class="form-group" style="grid-column:1/-1;display:flex;align-items:center;gap:10px">
+          <input type="checkbox" id="f-mandatory" style="width:16px;height:16px;accent-color:var(--brand)">
+          <label for="f-mandatory" style="font-size:14px;font-weight:600;cursor:pointer">
+            Mark as mandatory training <span style="font-weight:400;color:var(--text-muted)">(appears in compliance reports)</span>
+          </label>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('course-modal')">Cancel</button>
+      <button class="btn btn-primary" id="save-btn" onclick="saveCourse()">Save Course</button>
+    </div>
+  </div>
+</div>
+
+<!-- Assign users modal -->
+<div class="modal-overlay" id="assign-modal">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-header">
+      <span class="modal-title">Assign Course to Users</span>
+      <button class="modal-close" onclick="closeModal('assign-modal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="assign-alert"></div>
+      <input type="hidden" id="assign-course-id">
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:14px" id="assign-course-name"></p>
+      <div class="form-group">
+        <label class="form-label">Assign to</label>
+        <select class="form-select" id="assign-scope">
+          <option value="all">All employees</option>
+          <option value="department">Specific department</option>
+        </select>
+      </div>
+      <div class="form-group" id="dept-group" style="display:none">
+        <label class="form-label">Department</label>
+        <input class="form-input" id="assign-dept" placeholder="e.g. Operations">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('assign-modal')">Cancel</button>
+      <button class="btn btn-primary" id="assign-btn" onclick="doAssign()">Assign</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="js/config.js"></script>
+<script src="js/db.js"></script>
+<script src="js/app.js"></script>
+<script>
+document.getElementById('logo-letter').textContent = APP_CONFIG.logoLetter;
+document.getElementById('app-name').textContent = APP_CONFIG.appName;
+
+let courses = [];
+
+document.getElementById('assign-scope').onchange = function() {
+  document.getElementById('dept-group').style.display = this.value === 'department' ? '' : 'none';
+};
+
+(async () => {
+  const user = await requireAdmin();
+  if (!user) return;
+  renderNav('admin', user);
+  renderUserChip(user);
+  await loadCourses();
+})();
+
+async function loadCourses() {
+  Courses.invalidate();
+  courses = await Courses.getAll();
+  renderTable();
+}
+
+function renderTable() {
+  const wrap = document.getElementById('courses-table-wrap');
+  if (!courses.length) {
+    wrap.innerHTML = `<div class="empty-state"><div class="empty-icon">📚</div><strong>No courses yet</strong><p>Click "+ Add Course" to add your first training module.</p></div>`;
+    return;
+  }
+  wrap.innerHTML = `<table>
+    <thead><tr><th></th><th>Title</th><th>Type</th><th>Duration</th><th>Mandatory</th><th>Tags</th><th></th></tr></thead>
+    <tbody>${courses.map(c => `<tr>
+      <td style="font-size:22px;text-align:center;padding:8px 12px">${c.icon||'📖'}</td>
+      <td>
+        <div style="font-weight:600">${c.title}</div>
+        <div style="font-size:12px;color:var(--text-muted);max-width:280px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${c.description||''}</div>
+      </td>
+      <td>${typeLabel(c.content_type)}</td>
+      <td style="color:var(--text-muted)">${c.duration_minutes ? c.duration_minutes+' min' : '—'}</td>
+      <td>${c.is_mandatory ? '<span class="badge badge-red">Yes</span>' : '<span class="badge badge-gray">No</span>'}</td>
+      <td style="font-size:12px;color:var(--text-muted)">${(c.tags||[]).join(', ')||'—'}</td>
+      <td>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-ghost btn-sm" onclick="openAssignModal('${c.id}','${escQ(c.title)}')">Assign</button>
+          <button class="btn btn-ghost btn-sm" onclick="openEditModal(${JSON.stringify(c).replace(/"/g,'&quot;')})">Edit</button>
+          <a href="course.html?id=${c.id}" class="btn btn-ghost btn-sm" target="_blank">Preview</a>
+        </div>
+      </td>
+    </tr>`).join('')}</tbody>
+  </table>`;
+}
+
+function typeLabel(t) {
+  return {'markdown':'<span class="badge badge-blue">GitHub</span>','youtube':'<span class="badge badge-red">YouTube</span>','pdf':'<span class="badge badge-gray">PDF</span>','link':'<span class="badge badge-yellow">Link</span>'}[t] || `<span class="badge badge-gray">${t||'?'}</span>`;
+}
+function escQ(s) { return (s||'').replace(/'/g,"\\'"); }
+
+const TYPE_HINTS = {
+  markdown: 'GitHub repo URL — e.g. https://github.com/honorvet/safety-training',
+  youtube:  'YouTube video URL — e.g. https://youtube.com/watch?v=xxxxx',
+  pdf:      'Direct PDF URL or Google Drive / SharePoint shareable link',
+  link:     'Any URL — the course will open in a new tab',
+};
+function updateTypeHint() {
+  const t = document.getElementById('f-type').value;
+  document.getElementById('url-hint').textContent = TYPE_HINTS[t] || '';
+  const placeholders = { markdown:'https://github.com/org/repo-name', youtube:'https://www.youtube.com/watch?v=...', pdf:'https://...', link:'https://...' };
+  document.getElementById('f-url').placeholder = placeholders[t] || 'https://...';
+}
+updateTypeHint();
+
+function openAddModal() {
+  document.getElementById('modal-title').textContent = 'Add Course';
+  document.getElementById('edit-id').value = '';
+  ['f-title','f-desc','f-url','f-icon','f-tags'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('f-type').value = 'markdown';
+  document.getElementById('f-duration').value = '';
+  document.getElementById('f-mandatory').checked = false;
+  document.getElementById('modal-alert').innerHTML = '';
+  updateTypeHint();
+  openModal('course-modal');
+}
+
+function openEditModal(course) {
+  document.getElementById('modal-title').textContent = 'Edit Course';
+  document.getElementById('edit-id').value  = course.id;
+  document.getElementById('f-title').value  = course.title || '';
+  document.getElementById('f-desc').value   = course.description || '';
+  document.getElementById('f-type').value   = course.content_type || 'link';
+  document.getElementById('f-url').value    = course.content_url || '';
+  document.getElementById('f-icon').value   = course.icon || '';
+  document.getElementById('f-duration').value = course.duration_minutes || '';
+  document.getElementById('f-tags').value   = (course.tags||[]).join(', ');
+  document.getElementById('f-mandatory').checked = !!course.is_mandatory;
+  document.getElementById('modal-alert').innerHTML = '';
+  updateTypeHint();
+  openModal('course-modal');
+}
+
+async function saveCourse() {
+  const btn   = document.getElementById('save-btn');
+  const alert = document.getElementById('modal-alert');
+  alert.innerHTML = '';
+
+  const id    = document.getElementById('edit-id').value;
+  const title = document.getElementById('f-title').value.trim();
+  const url   = document.getElementById('f-url').value.trim();
+  if (!title || !url) { alert.innerHTML = '<div class="alert alert-error">Title and URL are required.</div>'; return; }
+
+  const course = {
+    id:               id || 'course-' + Date.now(),
+    title,
+    description:      document.getElementById('f-desc').value.trim(),
+    content_type:     document.getElementById('f-type').value,
+    content_url:      url,
+    icon:             document.getElementById('f-icon').value.trim() || '📖',
+    duration_minutes: parseInt(document.getElementById('f-duration').value) || null,
+    tags:             document.getElementById('f-tags').value.split(',').map(t=>t.trim()).filter(Boolean),
+    is_mandatory:     document.getElementById('f-mandatory').checked,
+    created_at:       id ? (courses.find(c=>c.id===id)?.created_at || new Date().toISOString().slice(0,10)) : new Date().toISOString().slice(0,10),
+  };
+
+  btn.disabled = true; btn.textContent = 'Saving…';
+
+  // Update local courses array and prompt download
+  if (id) {
+    const idx = courses.findIndex(c => c.id === id);
+    if (idx >= 0) courses[idx] = course; else courses.push(course);
+  } else {
+    courses.push(course);
+  }
+
+  downloadCoursesJson(courses);
+  renderTable();
+  closeModal('course-modal');
+  toast('Course saved! Replace data/courses.json in your GitHub repo with the downloaded file.', 'success');
+  btn.disabled = false; btn.textContent = 'Save Course';
+}
+
+function downloadCoursesJson(data) {
+  const json = JSON.stringify(data, null, 2);
+  const a = document.createElement('a');
+  a.href = 'data:application/json,' + encodeURIComponent(json);
+  a.download = 'courses.json';
+  a.click();
+}
+
+function openAssignModal(courseId, courseTitle) {
+  document.getElementById('assign-course-id').value = courseId;
+  document.getElementById('assign-course-name').textContent = 'Course: ' + courseTitle;
+  document.getElementById('assign-alert').innerHTML = '';
+  document.getElementById('assign-btn').disabled = false;
+  document.getElementById('assign-btn').textContent = 'Assign';
+  openModal('assign-modal');
+}
+
+async function doAssign() {
+  const btn      = document.getElementById('assign-btn');
+  const alertEl  = document.getElementById('assign-alert');
+  const courseId = document.getElementById('assign-course-id').value;
+  const scope    = document.getElementById('assign-scope').value;
+  const dept     = document.getElementById('assign-dept').value.trim();
+
+  btn.disabled = true; btn.textContent = 'Assigning…';
+  try {
+    let users = await Users.getAll();
+    if (scope === 'department' && dept) users = users.filter(u => u.department?.toLowerCase() === dept.toLowerCase());
+    const ids = users.map(u => u.id);
+    if (!ids.length) throw new Error('No users found for this filter.');
+    await Enrollments.bulkAssign(courseId, ids);
+    alertEl.innerHTML = `<div class="alert alert-success">✓ Assigned to ${ids.length} users.</div>`;
+    btn.textContent = 'Done ✓';
+  } catch(e) {
+    alertEl.innerHTML = `<div class="alert alert-error">${e.message}</div>`;
+    btn.disabled = false; btn.textContent = 'Assign';
+  }
+}
+</script>
+</body>
+</html>

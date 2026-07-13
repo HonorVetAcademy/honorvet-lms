@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HonorVet LMS — Sign In</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="login-page">
+  <div class="login-card">
+    <div class="login-logo">
+      <div class="logo-mark" id="logo-letter">HV</div>
+      <div>
+        <div class="org-name" id="org-name">HonorVet LMS</div>
+        <div style="font-size:12px;color:var(--text-muted)">Learning Management System</div>
+      </div>
+    </div>
+
+    <h2 class="login-title">Welcome back</h2>
+    <p class="login-sub">Sign in to access your training</p>
+
+    <div id="alert-area"></div>
+
+    <form id="login-form">
+      <div class="form-group">
+        <label class="form-label" for="email">Email address</label>
+        <input class="form-input" type="email" id="email" placeholder="you@honorvet.com" required autocomplete="email">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="password">Password</label>
+        <input class="form-input" type="password" id="password" placeholder="••••••••" required autocomplete="current-password">
+      </div>
+      <button type="submit" class="btn btn-primary btn-lg" style="width:100%;justify-content:center;" id="signin-btn">
+        Sign in
+      </button>
+    </form>
+
+    <div class="login-divider"><span>New to the platform?</span></div>
+
+    <button class="btn btn-secondary btn-lg" style="width:100%;justify-content:center;" onclick="showRegister()">
+      Create account
+    </button>
+
+    <p style="font-size:12px;color:var(--text-dim);text-align:center;margin-top:16px;">
+      Need help? Contact <a href="mailto:it@honorvet.com" style="color:var(--brand)">it@honorvet.com</a>
+    </p>
+  </div>
+</div>
+
+<!-- Register modal -->
+<div class="modal-overlay" id="register-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Create your account</span>
+      <button class="modal-close" onclick="closeModal('register-modal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="register-alert"></div>
+      <div class="form-group">
+        <label class="form-label">Full name</label>
+        <input class="form-input" type="text" id="reg-name" placeholder="First Last" required>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Work email</label>
+        <input class="form-input" type="email" id="reg-email" placeholder="you@honorvet.com" required>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Password</label>
+        <input class="form-input" type="password" id="reg-password" placeholder="Min 8 characters" required minlength="8">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Department <span style="color:var(--text-dim)">(optional)</span></label>
+        <input class="form-input" type="text" id="reg-dept" placeholder="e.g. Operations">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('register-modal')">Cancel</button>
+      <button class="btn btn-primary" id="register-btn" onclick="doRegister()">Create account</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="js/config.js"></script>
+<script src="js/db.js"></script>
+<script src="js/app.js"></script>
+<script>
+// Apply branding
+document.getElementById('logo-letter').textContent = APP_CONFIG.logoLetter;
+document.getElementById('org-name').textContent = APP_CONFIG.appName;
+document.title = APP_CONFIG.appName + ' — Sign In';
+
+// If already logged in, go to dashboard
+(async () => {
+  const session = await Auth.getSession();
+  if (session) window.location.href = 'dashboard.html';
+})();
+
+document.getElementById('login-form').onsubmit = async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById('signin-btn');
+  const alertArea = document.getElementById('alert-area');
+  alertArea.innerHTML = '';
+  btn.disabled = true;
+  btn.textContent = 'Signing in…';
+  try {
+    await Auth.signIn(
+      document.getElementById('email').value.trim(),
+      document.getElementById('password').value
+    );
+    window.location.href = 'dashboard.html';
+  } catch (err) {
+    alertArea.innerHTML = `<div class="alert alert-error">${err.message || 'Sign-in failed. Check your email and password.'}</div>`;
+    btn.disabled = false;
+    btn.textContent = 'Sign in';
+  }
+};
+
+function showRegister() {
+  document.getElementById('register-modal').classList.add('open');
+}
+
+async function doRegister() {
+  const btn = document.getElementById('register-btn');
+  const alertArea = document.getElementById('register-alert');
+  alertArea.innerHTML = '';
+  const name  = document.getElementById('reg-name').value.trim();
+  const email = document.getElementById('reg-email').value.trim();
+  const pass  = document.getElementById('reg-password').value;
+  const dept  = document.getElementById('reg-dept').value.trim();
+  if (!name || !email || !pass) {
+    alertArea.innerHTML = '<div class="alert alert-error">Please fill in all required fields.</div>';
+    return;
+  }
+  btn.disabled = true; btn.textContent = 'Creating…';
+  try {
+    await Auth.signUp(email, pass, { name, department: dept || null, role: 'employee' });
+    alertArea.innerHTML = '<div class="alert alert-success">Account created! Check your email to confirm, then sign in.</div>';
+    btn.textContent = 'Done ✓';
+  } catch (err) {
+    alertArea.innerHTML = `<div class="alert alert-error">${err.message}</div>`;
+    btn.disabled = false; btn.textContent = 'Create account';
+  }
+}
+</script>
+</body>
+</html>

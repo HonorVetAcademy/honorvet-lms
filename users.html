@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Users — HonorVet LMS</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-mark" id="logo-letter">HV</div>
+      <div class="logo-text-wrap">
+        <div class="logo-text" id="app-name">HonorVet LMS</div>
+        <div class="logo-sub">Learning Platform</div>
+      </div>
+    </div>
+    <nav class="nav-section"><div class="nav-label">Menu</div><div id="nav-links"></div></nav>
+    <div class="sidebar-footer"><div class="user-chip" id="user-chip"></div></div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <div>
+        <div class="topbar-title">User Management</div>
+        <div class="topbar-sub" id="user-count-sub">Loading…</div>
+      </div>
+      <div class="topbar-actions">
+        <button class="btn btn-secondary" onclick="openModal('import-modal')">⬆ Import CSV</button>
+        <button class="btn btn-primary" onclick="openModal('add-user-modal')">+ Add User</button>
+      </div>
+    </header>
+
+    <div class="page">
+      <div id="alert-area"></div>
+
+      <!-- Filter bar -->
+      <div style="display:flex;gap:10px;margin-bottom:18px">
+        <input class="form-input" type="search" id="search" placeholder="Search by name or email…" style="flex:1">
+        <select class="form-select" id="filter-role" style="width:160px">
+          <option value="">All roles</option>
+          <option>admin</option><option>hr</option><option>manager</option>
+          <option>employee</option><option>trainer</option>
+        </select>
+      </div>
+
+      <div class="table-wrap" id="users-table-wrap">
+        <div class="spinner"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Add user modal -->
+<div class="modal-overlay" id="add-user-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Add User</span>
+      <button class="modal-close" onclick="closeModal('add-user-modal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="add-alert"></div>
+      <div class="form-group">
+        <label class="form-label">Full name</label>
+        <input class="form-input" id="add-name" placeholder="First Last">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Work email</label>
+        <input class="form-input" type="email" id="add-email" placeholder="user@honorvet.com">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Temporary password</label>
+        <input class="form-input" type="password" id="add-password" placeholder="Min 8 characters">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="form-group">
+          <label class="form-label">Role</label>
+          <select class="form-select" id="add-role">
+            <option value="employee">Employee</option>
+            <option value="manager">Manager</option>
+            <option value="hr">HR</option>
+            <option value="trainer">Trainer</option>
+            <option value="admin">Admin</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Department</label>
+          <input class="form-input" id="add-dept" placeholder="e.g. Operations">
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('add-user-modal')">Cancel</button>
+      <button class="btn btn-primary" id="add-btn" onclick="addUser()">Add User</button>
+    </div>
+  </div>
+</div>
+
+<!-- Import CSV modal -->
+<div class="modal-overlay" id="import-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Import Users from CSV</span>
+      <button class="modal-close" onclick="closeModal('import-modal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="import-alert"></div>
+      <div class="alert alert-info" style="margin-bottom:14px">
+        CSV format: <code>name,email,role,department</code><br>
+        Role must be: employee, manager, hr, trainer, or admin
+      </div>
+      <a href="#" onclick="downloadTemplate()" class="btn btn-ghost btn-sm" style="margin-bottom:12px">⬇ Download template</a>
+      <div class="form-group">
+        <label class="form-label">CSV file</label>
+        <input type="file" id="csv-file" accept=".csv" class="form-input" style="padding:6px">
+      </div>
+      <div id="csv-preview" style="margin-top:10px"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('import-modal')">Cancel</button>
+      <button class="btn btn-primary" id="import-btn" onclick="importUsers()" disabled>Import</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit role modal -->
+<div class="modal-overlay" id="edit-modal">
+  <div class="modal" style="max-width:380px">
+    <div class="modal-header">
+      <span class="modal-title" id="edit-modal-name">Edit User</span>
+      <button class="modal-close" onclick="closeModal('edit-modal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="edit-uid">
+      <div class="form-group">
+        <label class="form-label">Role</label>
+        <select class="form-select" id="edit-role">
+          <option value="employee">Employee</option>
+          <option value="manager">Manager</option>
+          <option value="hr">HR</option>
+          <option value="trainer">Trainer</option>
+          <option value="admin">Admin</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('edit-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveRole()">Save</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="js/config.js"></script>
+<script src="js/db.js"></script>
+<script src="js/app.js"></script>
+<script>
+document.getElementById('logo-letter').textContent = APP_CONFIG.logoLetter;
+document.getElementById('app-name').textContent = APP_CONFIG.appName;
+
+let allUsers = [], csvRows = [];
+
+(async () => {
+  const user = await requireAdmin();
+  if (!user) return;
+  renderNav('users', user);
+  renderUserChip(user);
+  await loadUsers();
+
+  document.getElementById('search').oninput = renderTable;
+  document.getElementById('filter-role').onchange = renderTable;
+})();
+
+async function loadUsers() {
+  try {
+    allUsers = await Users.getAll();
+    document.getElementById('user-count-sub').textContent = `${allUsers.length} users in your organisation`;
+    renderTable();
+  } catch(e) {
+    document.getElementById('users-table-wrap').innerHTML = `<div class="empty-state"><p>Could not load users.<br><small>${e.message}</small></p></div>`;
+  }
+}
+
+function renderTable() {
+  const q    = document.getElementById('search').value.toLowerCase();
+  const role = document.getElementById('filter-role').value;
+  const rows = allUsers.filter(u =>
+    (!q    || u.name?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q)) &&
+    (!role || u.role === role)
+  );
+  const wrap = document.getElementById('users-table-wrap');
+  if (rows.length === 0) {
+    wrap.innerHTML = `<div class="empty-state"><div class="empty-icon">👥</div><strong>No users found</strong></div>`;
+    return;
+  }
+  wrap.innerHTML = `<table>
+    <thead><tr>
+      <th>Name</th><th>Email</th><th>Role</th><th>Department</th><th>Joined</th><th></th>
+    </tr></thead>
+    <tbody>${rows.map(u => `<tr>
+      <td><strong>${u.name || '—'}</strong></td>
+      <td style="color:var(--text-muted)">${u.email}</td>
+      <td>${roleBadge(u.role)}</td>
+      <td style="color:var(--text-muted)">${u.department || '—'}</td>
+      <td style="color:var(--text-muted)">${fmtDate(u.created_at)}</td>
+      <td><button class="btn btn-ghost btn-sm" onclick="openEdit('${u.id}','${u.name||''}','${u.role||'employee'}')">Edit</button></td>
+    </tr>`).join('')}</tbody>
+  </table>`;
+}
+
+async function addUser() {
+  const btn = document.getElementById('add-btn');
+  const alert = document.getElementById('add-alert');
+  alert.innerHTML = '';
+  const name  = document.getElementById('add-name').value.trim();
+  const email = document.getElementById('add-email').value.trim();
+  const pass  = document.getElementById('add-password').value;
+  const role  = document.getElementById('add-role').value;
+  const dept  = document.getElementById('add-dept').value.trim();
+  if (!name || !email || !pass) { alert.innerHTML = '<div class="alert alert-error">Name, email and password are required.</div>'; return; }
+  btn.disabled = true; btn.textContent = 'Adding…';
+  try {
+    const { data, error } = await sb().auth.signUp({ email, password: pass, options: { data: { name, role, department: dept || null } } });
+    if (error) throw error;
+    if (data.user) await Users.upsert(data.user.id, { email, name, role, department: dept || null });
+    toast('User added!', 'success');
+    closeModal('add-user-modal');
+    await loadUsers();
+  } catch(e) { alert.innerHTML = `<div class="alert alert-error">${e.message}</div>`; }
+  btn.disabled = false; btn.textContent = 'Add User';
+}
+
+// CSV import
+document.getElementById('csv-file').onchange = function() {
+  const file = this.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const lines = e.target.result.trim().split('\n').filter(Boolean);
+    const header = lines[0].toLowerCase().split(',').map(h => h.trim());
+    csvRows = lines.slice(1).map(line => {
+      const vals = line.split(',').map(v => v.trim().replace(/^"|"$/g,''));
+      const obj = {};
+      header.forEach((h,i) => obj[h] = vals[i] || '');
+      return obj;
+    }).filter(r => r.email);
+    document.getElementById('csv-preview').innerHTML = `
+      <div class="alert alert-info">${csvRows.length} users found in CSV</div>
+      <div class="table-wrap" style="max-height:180px;overflow-y:auto">
+        <table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Dept</th></tr></thead>
+        <tbody>${csvRows.slice(0,5).map(r => `<tr><td>${r.name||'—'}</td><td>${r.email}</td><td>${r.role||'employee'}</td><td>${r.department||'—'}</td></tr>`).join('')}
+        ${csvRows.length > 5 ? `<tr><td colspan="4" style="color:var(--text-dim);font-style:italic">… and ${csvRows.length-5} more</td></tr>` : ''}</tbody></table>
+      </div>`;
+    document.getElementById('import-btn').disabled = false;
+  };
+  reader.readAsText(file);
+};
+
+async function importUsers() {
+  const btn = document.getElementById('import-btn');
+  const alert = document.getElementById('import-alert');
+  if (!csvRows.length) return;
+  btn.disabled = true; btn.textContent = 'Importing…';
+  let success = 0, failed = [];
+  for (const row of csvRows) {
+    try {
+      const tempPass = 'HonorVet' + Math.random().toString(36).slice(2,8) + '!1';
+      const { data, error } = await sb().auth.signUp({ email: row.email, password: tempPass, options: { data: { name: row.name, role: row.role||'employee', department: row.department||null } } });
+      if (error) throw error;
+      if (data.user) await Users.upsert(data.user.id, { email: row.email, name: row.name, role: row.role||'employee', department: row.department||null });
+      success++;
+    } catch(e) { failed.push(row.email); }
+  }
+  let msg = `<div class="alert alert-success">✓ Imported ${success} users.</div>`;
+  if (failed.length) msg += `<div class="alert alert-error">Failed: ${failed.join(', ')}</div>`;
+  alert.innerHTML = msg;
+  btn.textContent = 'Done';
+  await loadUsers();
+}
+
+function downloadTemplate() {
+  const csv = 'name,email,role,department\nJohn Smith,john.smith@honorvet.com,employee,Operations\nJane Doe,jane.doe@honorvet.com,manager,HR';
+  const a = document.createElement('a');
+  a.href = 'data:text/csv,' + encodeURIComponent(csv);
+  a.download = 'users-template.csv';
+  a.click();
+}
+
+function openEdit(id, name, role) {
+  document.getElementById('edit-uid').value = id;
+  document.getElementById('edit-modal-name').textContent = name || 'Edit User';
+  document.getElementById('edit-role').value = role;
+  openModal('edit-modal');
+}
+
+async function saveRole() {
+  const id   = document.getElementById('edit-uid').value;
+  const role = document.getElementById('edit-role').value;
+  try {
+    await Users.updateRole(id, role);
+    toast('Role updated', 'success');
+    closeModal('edit-modal');
+    await loadUsers();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+function sb() {
+  return supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+}
+</script>
+</body>
+</html>

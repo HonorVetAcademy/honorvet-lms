@@ -1,0 +1,54 @@
+[
+  {
+    "id": "course-safety-001",
+    "title": "Workplace Safety Fundamentals",
+    "description": "Essential safety protocols every HonorVet employee must know. Covers emergency procedures, hazard reporting, and PPE.",
+    "icon": "🦺",
+    "content_type": "markdown",
+    "content_url": "https://github.com/honorvet/workplace-safety",
+    "duration_minutes": 30,
+    "is_mandatory": true,
+    "tags": ["safety", "mandatory", "all-staff"],
+    "department": null,
+    "created_at": "2026-07-01"
+  },
+  {
+    "id": "course-compliance-001",
+    "title": "HR Compliance & Code of Conduct",
+    "description": "Annual compliance training covering company policies, ethics guidelines, and reporting procedures.",
+    "icon": "📋",
+    "content_type": "markdown",
+    "content_url": "https://github.com/honorvet/hr-compliance",
+    "duration_minutes": 45,
+    "is_mandatory": true,
+    "tags": ["compliance", "mandatory", "hr"],
+    "department": null,
+    "created_at": "2026-07-01"
+  },
+  {
+    "id": "course-security-001",
+    "title": "Cybersecurity Awareness",
+    "description": "Protect the organization from phishing, data breaches, and social engineering attacks.",
+    "icon": "🔐",
+    "content_type": "youtube",
+    "content_url": "https://www.youtube.com/watch?v=aO858HyFbKI",
+    "duration_minutes": 20,
+    "is_mandatory": false,
+    "tags": ["security", "it"],
+    "department": null,
+    "created_at": "2026-07-05"
+  },
+  {
+    "id": "course-dei-001",
+    "title": "Diversity, Equity & Inclusion",
+    "description": "Building an inclusive workplace culture where every veteran and team member feels valued.",
+    "icon": "🤝",
+    "content_type": "link",
+    "content_url": "https://www.shrm.org/topics-tools/topics/inclusion-equity-diversity",
+    "duration_minutes": 60,
+    "is_mandatory": false,
+    "tags": ["culture", "dei"],
+    "department": null,
+    "created_at": "2026-07-08"
+  }
+]

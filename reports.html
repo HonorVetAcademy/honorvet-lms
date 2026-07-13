@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reports — HonorVet LMS</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-mark" id="logo-letter">HV</div>
+      <div class="logo-text-wrap">
+        <div class="logo-text" id="app-name">HonorVet LMS</div>
+        <div class="logo-sub">Learning Platform</div>
+      </div>
+    </div>
+    <nav class="nav-section"><div class="nav-label">Menu</div><div id="nav-links"></div></nav>
+    <div class="sidebar-footer"><div class="user-chip" id="user-chip"></div></div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <div>
+        <div class="topbar-title">Reports</div>
+        <div class="topbar-sub">Training completion and compliance overview</div>
+      </div>
+      <div class="topbar-actions">
+        <button class="btn btn-secondary" onclick="exportCSV()">⬇ Export CSV</button>
+      </div>
+    </header>
+
+    <div class="page">
+      <!-- Summary stats -->
+      <div class="stats-grid" id="stats-grid">
+        <div class="stat-card"><div class="stat-label">Total Users</div><div class="stat-value" id="s-users">—</div></div>
+        <div class="stat-card"><div class="stat-label">Total Courses</div><div class="stat-value" id="s-courses">—</div></div>
+        <div class="stat-card"><div class="stat-label">Completions</div><div class="stat-value" id="s-completed">—</div></div>
+        <div class="stat-card"><div class="stat-label">Compliance Rate</div><div class="stat-value" id="s-compliance">—</div><div class="stat-sub">mandatory courses</div></div>
+      </div>
+
+      <!-- Tabs -->
+      <div id="tabs-wrap">
+        <div class="tabs">
+          <button class="tab-btn active" data-tab="tab-completion" onclick="switchTab(this)">By Employee</button>
+          <button class="tab-btn" data-tab="tab-courses" onclick="switchTab(this)">By Course</button>
+          <button class="tab-btn" data-tab="tab-compliance" onclick="switchTab(this)">Compliance</button>
+        </div>
+
+        <!-- By Employee -->
+        <div id="tab-completion">
+          <div class="table-wrap" id="user-table-wrap"><div class="spinner"></div></div>
+        </div>
+
+        <!-- By Course -->
+        <div id="tab-courses" style="display:none">
+          <div class="table-wrap" id="course-table-wrap"><div class="spinner"></div></div>
+        </div>
+
+        <!-- Compliance -->
+        <div id="tab-compliance" style="display:none">
+          <div id="compliance-area"><div class="spinner"></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="js/config.js"></script>
+<script src="js/db.js"></script>
+<script src="js/app.js"></script>
+<script>
+document.getElementById('logo-letter').textContent = APP_CONFIG.logoLetter;
+document.getElementById('app-name').textContent = APP_CONFIG.appName;
+
+let allEnrollments = [], allUsers = [], allCourses = [];
+
+function switchTab(btn) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('#tabs-wrap > div[id^="tab-"]').forEach(p => p.style.display = 'none');
+  btn.classList.add('active');
+  document.getElementById(btn.dataset.tab).style.display = '';
+}
+
+(async () => {
+  const user = await requireAuth();
+  if (!user) return;
+  if (!['admin','hr','manager'].includes(user.role)) { location.href = 'dashboard.html'; return; }
+  renderNav('reports', user);
+  renderUserChip(user);
+
+  [allEnrollments, allUsers, allCourses] = await Promise.all([
+    Enrollments.getAll(),
+    Users.getAll(),
+    Courses.getAll(),
+  ]);
+
+  // Stats
+  const completed    = allEnrollments.filter(e => e.status === 'completed').length;
+  const mandatory    = allCourses.filter(c => c.is_mandatory);
+  const mandEnr      = allEnrollments.filter(e => mandatory.some(m => m.id === e.course_id));
+  const compliance   = mandEnr.length ? Math.round(mandEnr.filter(e => e.status==='completed').length / mandEnr.length * 100) : 100;
+  document.getElementById('s-users').textContent      = allUsers.length;
+  document.getElementById('s-courses').textContent    = allCourses.length;
+  document.getElementById('s-completed').textContent  = completed;
+  document.getElementById('s-compliance').textContent = compliance + '%';
+
+  renderUserTable();
+  renderCourseTable();
+  renderCompliance();
+})();
+
+function renderUserTable() {
+  // Group enrollments by user
+  const byUser = {};
+  for (const e of allEnrollments) {
+    if (!byUser[e.user_id]) {
+      const u = allUsers.find(u => u.id === e.user_id) || e.users || {};
+      byUser[e.user_id] = { name: u.name||'—', email: u.email||'—', role: u.role||'—', dept: u.department||'—', total:0, done:0 };
+    }
+    byUser[e.user_id].total++;
+    if (e.status==='completed') byUser[e.user_id].done++;
+  }
+  const rows = Object.values(byUser).sort((a,b) => b.done/Math.max(b.total,1) - a.done/Math.max(a.total,1));
+
+  if (!rows.length) {
+    document.getElementById('user-table-wrap').innerHTML = '<div class="empty-state"><p>No enrollment data yet.</p></div>';
+    return;
+  }
+  document.getElementById('user-table-wrap').innerHTML = `<table>
+    <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Department</th><th>Progress</th><th>Completed</th></tr></thead>
+    <tbody>${rows.map(r => {
+      const pct = r.total ? Math.round(r.done/r.total*100) : 0;
+      return `<tr>
+        <td><strong>${r.name}</strong></td>
+        <td style="color:var(--text-muted)">${r.email}</td>
+        <td>${roleBadge(r.role)}</td>
+        <td style="color:var(--text-muted)">${r.dept}</td>
+        <td style="min-width:120px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <div class="progress-bar" style="flex:1"><div class="progress-fill ${pct===100?'done':''}" style="width:${pct}%"></div></div>
+            <span style="font-size:12px;color:var(--text-muted);white-space:nowrap">${pct}%</span>
+          </div>
+        </td>
+        <td style="color:var(--text-muted)">${r.done} / ${r.total}</td>
+      </tr>`;
+    }).join('')}</tbody>
+  </table>`;
+}
+
+function renderCourseTable() {
+  const rows = allCourses.map(c => {
+    const enrs   = allEnrollments.filter(e => e.course_id === c.id);
+    const done   = enrs.filter(e => e.status==='completed').length;
+    const active = enrs.filter(e => e.status==='in_progress').length;
+    const pct    = enrs.length ? Math.round(done/enrs.length*100) : 0;
+    return { ...c, enrolled: enrs.length, done, active, pct };
+  }).sort((a,b) => b.enrolled - a.enrolled);
+
+  if (!rows.length) {
+    document.getElementById('course-table-wrap').innerHTML = '<div class="empty-state"><p>No courses yet.</p></div>';
+    return;
+  }
+  document.getElementById('course-table-wrap').innerHTML = `<table>
+    <thead><tr><th>Course</th><th>Mandatory</th><th>Enrolled</th><th>In Progress</th><th>Completed</th><th>Completion Rate</th></tr></thead>
+    <tbody>${rows.map(c => `<tr>
+      <td><strong>${c.icon||'📖'} ${c.title}</strong></td>
+      <td>${c.is_mandatory ? '<span class="badge badge-red">Yes</span>' : '<span class="badge badge-gray">No</span>'}</td>
+      <td>${c.enrolled}</td>
+      <td style="color:var(--text-muted)">${c.active}</td>
+      <td style="color:var(--success)">${c.done}</td>
+      <td style="min-width:130px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="progress-bar" style="flex:1"><div class="progress-fill ${c.pct===100?'done':''}" style="width:${c.pct}%"></div></div>
+          <span style="font-size:12px;color:var(--text-muted)">${c.pct}%</span>
+        </div>
+      </td>
+    </tr>`).join('')}</tbody>
+  </table>`;
+}
+
+function renderCompliance() {
+  const mandatory = allCourses.filter(c => c.is_mandatory);
+  if (!mandatory.length) {
+    document.getElementById('compliance-area').innerHTML = '<div class="empty-state"><p>No mandatory courses defined yet.<br>Mark a course as mandatory to see compliance data.</p></div>';
+    return;
+  }
+  const cards = mandatory.map(c => {
+    const enrs = allEnrollments.filter(e => e.course_id === c.id);
+    const done = enrs.filter(e => e.status==='completed').length;
+    const pct  = allUsers.length ? Math.round(done/allUsers.length*100) : 0;
+    const color = pct >= 90 ? 'var(--success)' : pct >= 60 ? '#d97706' : 'var(--danger)';
+    return `<div class="card card-body" style="margin-bottom:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div><span style="font-size:20px;margin-right:8px">${c.icon||'📖'}</span><strong>${c.title}</strong></div>
+        <span style="font-size:22px;font-weight:800;color:${color}">${pct}%</span>
+      </div>
+      <div class="progress-bar" style="height:8px"><div class="progress-fill" style="width:${pct}%;background:${color}"></div></div>
+      <div style="margin-top:8px;font-size:12.5px;color:var(--text-muted)">${done} of ${allUsers.length} employees completed</div>
+    </div>`;
+  });
+  document.getElementById('compliance-area').innerHTML = cards.join('');
+}
+
+function exportCSV() {
+  const byUser = {};
+  for (const e of allEnrollments) {
+    const u = allUsers.find(u => u.id === e.user_id) || {};
+    const c = allCourses.find(c => c.id === e.course_id) || {};
+    byUser[e.user_id + '_' + e.course_id] = {
+      name: u.name||'', email: u.email||'', role: u.role||'', department: u.department||'',
+      course: c.title||e.course_id, mandatory: c.is_mandatory ? 'Yes':'No',
+      status: e.status, completedAt: e.completed_at||'',
+    };
+  }
+  const rows = Object.values(byUser);
+  const header = 'Name,Email,Role,Department,Course,Mandatory,Status,Completed At';
+  const csv = [header, ...rows.map(r =>
+    [r.name,r.email,r.role,r.department,r.course,r.mandatory,r.status,r.completedAt]
+      .map(v => `"${String(v).replace(/"/g,'""')}"`)
+      .join(',')
+  )].join('\n');
+  const a = document.createElement('a');
+  a.href = 'data:text/csv,' + encodeURIComponent(csv);
+  a.download = `lms-report-${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  toast('Report exported!', 'success');
+}
+</script>
+</body>
+</html>

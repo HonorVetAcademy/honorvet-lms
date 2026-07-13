@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Course — HonorVet LMS</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-mark" id="logo-letter">HV</div>
+      <div class="logo-text-wrap">
+        <div class="logo-text" id="app-name">HonorVet LMS</div>
+        <div class="logo-sub">Learning Platform</div>
+      </div>
+    </div>
+    <nav class="nav-section"><div class="nav-label">Menu</div><div id="nav-links"></div></nav>
+    <div class="sidebar-footer"><div class="user-chip" id="user-chip"></div></div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <div style="display:flex;align-items:center;gap:12px">
+        <a href="catalog.html" class="btn btn-secondary btn-sm">← Back</a>
+        <div>
+          <div class="topbar-title" id="course-title">Loading…</div>
+          <div class="topbar-sub" id="course-meta"></div>
+        </div>
+      </div>
+      <div class="topbar-actions" id="topbar-actions"></div>
+    </header>
+
+    <div class="page">
+      <div style="display:grid;grid-template-columns:1fr 300px;gap:20px;align-items:start" id="layout">
+        <!-- Player -->
+        <div>
+          <div class="player-wrap" id="player-wrap">
+            <div class="spinner"></div>
+          </div>
+        </div>
+
+        <!-- Sidebar info -->
+        <div style="display:flex;flex-direction:column;gap:16px">
+          <div class="card card-body" id="progress-card">
+            <div class="card-title">Your Progress</div>
+            <div style="margin:12px 0" id="progress-bar-wrap">
+              <div class="progress-bar"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
+              <div style="font-size:12px;color:var(--text-muted);margin-top:6px" id="progress-label">Not started</div>
+            </div>
+            <button class="btn btn-success" style="width:100%;justify-content:center" id="complete-btn" onclick="markComplete()" disabled>
+              Mark as Complete ✓
+            </button>
+            <div id="completed-msg" style="display:none;text-align:center;color:var(--success);font-size:13px;font-weight:600;margin-top:8px">
+              ✓ Completed
+            </div>
+          </div>
+
+          <div class="card card-body" id="info-card">
+            <div class="card-title">About this course</div>
+            <div style="margin-top:10px;display:flex;flex-direction:column;gap:8px;font-size:13px;color:var(--text-muted)" id="course-info-rows"></div>
+          </div>
+
+          <div class="card card-body" id="tags-card" style="display:none">
+            <div class="card-title" style="margin-bottom:8px">Tags</div>
+            <div id="tags-wrap" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="js/config.js"></script>
+<script src="js/db.js"></script>
+<script src="js/app.js"></script>
+<script>
+document.getElementById('logo-letter').textContent = APP_CONFIG.logoLetter;
+document.getElementById('app-name').textContent = APP_CONFIG.appName;
+
+const params    = new URLSearchParams(location.search);
+const courseId  = params.get('id');
+let currentUser = null, enrollment = null, course = null;
+
+(async () => {
+  currentUser = await requireAuth();
+  if (!currentUser) return;
+  renderNav('catalog', currentUser);
+  renderUserChip(currentUser);
+
+  if (!courseId) { location.href = 'catalog.html'; return; }
+
+  course = await Courses.getById(courseId);
+  if (!course) { location.href = 'catalog.html'; return; }
+
+  document.title = course.title + ' — HonorVet LMS';
+  document.getElementById('course-title').textContent = course.title;
+  document.getElementById('course-meta').textContent  = `${course.duration_minutes || '?'} min · ${course.content_type?.toUpperCase()}`;
+
+  // Ensure enrolled
+  try {
+    await Enrollments.enroll(currentUser.id, courseId);
+  } catch {}
+
+  // Get enrollment
+  const enrs = await Enrollments.getMine(currentUser.id);
+  enrollment  = enrs.find(e => e.course_id === courseId);
+
+  // Update progress UI
+  updateProgressUI();
+
+  // Info card
+  document.getElementById('course-info-rows').innerHTML = `
+    <div><strong>Duration:</strong> ${course.duration_minutes || '?'} minutes</div>
+    <div><strong>Type:</strong> ${contentTypeLabel(course.content_type)}</div>
+    ${course.is_mandatory ? '<div style="color:var(--danger)"><strong>⚠ Mandatory training</strong></div>' : ''}
+    ${course.created_at ? `<div><strong>Added:</strong> ${fmtDate(course.created_at)}</div>` : ''}
+  `;
+
+  // Tags
+  if (course.tags?.length) {
+    document.getElementById('tags-card').style.display = '';
+    document.getElementById('tags-wrap').innerHTML = course.tags.map(t =>
+      `<span class="badge badge-blue">${t}</span>`).join('');
+  }
+
+  // Render content
+  await renderPlayer(course);
+
+  // Mark in-progress if not already done
+  if (enrollment?.status === 'not_started') {
+    await Enrollments.updateProgress(currentUser.id, courseId, 'in_progress', 50);
+    enrollment.status = 'in_progress';
+    enrollment.progress = 50;
+    updateProgressUI();
+  }
+})();
+
+function updateProgressUI() {
+  if (!enrollment) return;
+  const pct = enrollment.progress || 0;
+  document.getElementById('progress-fill').style.width = pct + '%';
+  document.getElementById('progress-fill').classList.toggle('done', enrollment.status === 'completed');
+
+  if (enrollment.status === 'completed') {
+    document.getElementById('progress-label').textContent = `Completed on ${fmtDate(enrollment.completed_at)}`;
+    document.getElementById('complete-btn').style.display = 'none';
+    document.getElementById('completed-msg').style.display = '';
+  } else {
+    document.getElementById('progress-label').textContent = enrollment.status === 'in_progress' ? 'In progress' : 'Not started';
+    document.getElementById('complete-btn').disabled = false;
+  }
+}
+
+async function markComplete() {
+  const btn = document.getElementById('complete-btn');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    enrollment = await Enrollments.updateProgress(currentUser.id, courseId, 'completed', 100);
+    updateProgressUI();
+    toast('Course marked complete! 🎉', 'success');
+  } catch(e) {
+    toast(e.message, 'error');
+    btn.disabled = false; btn.textContent = 'Mark as Complete ✓';
+  }
+}
+
+async function renderPlayer(course) {
+  const wrap = document.getElementById('player-wrap');
+
+  if (course.content_type === 'youtube') {
+    const videoId = extractYouTubeId(course.content_url);
+    if (videoId) {
+      wrap.innerHTML = `<iframe class="player-embed" src="https://www.youtube.com/embed/${videoId}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`;
+      return;
+    }
+  }
+
+  if (course.content_type === 'pdf') {
+    wrap.innerHTML = `<iframe class="player-embed" src="${course.content_url}" style="height:600px"></iframe>`;
+    return;
+  }
+
+  if (course.content_type === 'link') {
+    wrap.innerHTML = `
+      <div style="padding:40px;text-align:center">
+        <div style="font-size:48px;margin-bottom:16px">🔗</div>
+        <p style="font-size:15px;color:var(--text-muted);margin-bottom:20px">This course opens in an external resource.</p>
+        <a href="${course.content_url}" target="_blank" rel="noopener" class="btn btn-primary btn-lg" onclick="markInProgress()">
+          Open Course ↗
+        </a>
+        <p style="margin-top:16px;font-size:12px;color:var(--text-dim)">${course.content_url}</p>
+      </div>`;
+    return;
+  }
+
+  if (course.content_type === 'markdown' && course.content_url?.includes('github.com')) {
+    wrap.innerHTML = `<div style="padding:24px;color:var(--text-muted);font-size:14px">Fetching content from GitHub…</div>`;
+    try {
+      const md = await fetchGithubReadme(course.content_url);
+      if (md) {
+        wrap.innerHTML = `<div class="player-markdown">${markdownToHtml(md)}</div>`;
+        return;
+      }
+    } catch {}
+    // Fallback: show link to repo
+    wrap.innerHTML = `
+      <div style="padding:40px;text-align:center">
+        <div style="font-size:48px;margin-bottom:16px">📂</div>
+        <p style="color:var(--text-muted);margin-bottom:20px">Could not load content automatically.<br>Open the repository directly:</p>
+        <a href="${course.content_url}" target="_blank" rel="noopener" class="btn btn-primary btn-lg">Open on GitHub ↗</a>
+      </div>`;
+    return;
+  }
+
+  // Generic fallback
+  wrap.innerHTML = `
+    <div style="padding:40px;text-align:center">
+      <div style="font-size:48px;margin-bottom:16px">${course.icon || '📖'}</div>
+      <h3 style="margin-bottom:8px">${course.title}</h3>
+      <p style="color:var(--text-muted);margin-bottom:20px">${course.description || ''}</p>
+      ${course.content_url ? `<a href="${course.content_url}" target="_blank" rel="noopener" class="btn btn-primary btn-lg">Open Content ↗</a>` : ''}
+    </div>`;
+}
+
+function extractYouTubeId(url) {
+  if (!url) return null;
+  const m = url.match(/(?:v=|youtu\.be\/|embed\/)([a-zA-Z0-9_-]{11})/);
+  return m ? m[1] : null;
+}
+
+function contentTypeLabel(t) {
+  return { markdown: 'GitHub Repo', pdf: 'PDF Document', youtube: 'Video', link: 'External Link', scorm: 'SCORM Package' }[t] || t || 'Unknown';
+}
+</script>
+</body>
+</html>
