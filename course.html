@@ -23,16 +23,19 @@
   <div class="main">
     <header class="topbar">
       <div style="display:flex;align-items:center;gap:12px">
-        <a href="catalog.html" class="btn btn-secondary btn-sm">← Back</a>
-        <div>
-          <div class="topbar-title" id="course-title">Loading…</div>
-          <div class="topbar-sub" id="course-meta"></div>
-        </div>
+        <a href="catalog.html" class="btn btn-secondary btn-sm">← Back to catalog</a>
       </div>
       <div id="notif-bell-wrap"></div>
     </header>
 
     <div class="page">
+      <!-- Course hero banner -->
+      <div class="course-hero" id="course-hero">
+        <div class="course-hero-eyebrow" id="ch-cat">Training</div>
+        <h1 class="course-hero-title" id="course-title">Loading…</h1>
+        <div class="course-hero-meta" id="course-meta"></div>
+      </div>
+
       <div style="display:grid;grid-template-columns:1fr 300px;gap:20px;align-items:start" id="layout">
         <div>
           <div class="player-wrap" id="player-wrap">
@@ -135,7 +138,12 @@ let trackTimer = null, trackSeconds = 0, trackMinSeconds = 0, trackUnlocked = fa
 
   document.title = course.title + ' — HonorVet LMS';
   document.getElementById('course-title').textContent = course.title;
-  document.getElementById('course-meta').textContent  = `${course.duration_minutes || '?'} min · ${contentTypeLabel(course.content_type)}`;
+  document.getElementById('ch-cat').textContent = (course.tags && course.tags[0]) || 'Training';
+  document.getElementById('course-hero').style.background = courseGradient(course);
+  document.getElementById('course-meta').innerHTML =
+    `<span class="chm">${clockIcon()} ${course.duration_minutes || '?'} min</span>` +
+    `<span class="chm">${course.icon || '📖'} ${contentTypeLabel(course.content_type)}</span>` +
+    (course.is_mandatory ? `<span class="chm chm-mand">⚠ Mandatory</span>` : '');
 
   try { await Enrollments.enroll(currentUser.id, courseId); } catch {}
 

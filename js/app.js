@@ -117,6 +117,84 @@ function roleBadge(role) {
   return `<span class="badge ${map[role] || 'badge-gray'}">${role}</span>`;
 }
 
+// ── Course card (shared premium card used by dashboard + catalog) ──
+const COURSE_GRADIENTS = [
+  ['#0B1F3A', '#0056D2'], ['#0056D2', '#3B8EF3'], ['#123C66', '#0A7C4E'],
+  ['#5A1020', '#C8102E'], ['#7A4B00', '#C9A227'], ['#1B3A63', '#3B5BA9'],
+  ['#0A4A4E', '#12A89B'], ['#3A1F5A', '#7A4BC9'],
+];
+
+// Deterministic gradient so each course keeps a stable colour
+function courseGradient(course) {
+  const key = (course.tags && course.tags[0]) || course.id || course.title || '';
+  let h = 0;
+  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
+  const [a, b] = COURSE_GRADIENTS[h % COURSE_GRADIENTS.length];
+  return `linear-gradient(135deg, ${a}, ${b})`;
+}
+
+// Human label for the content type (real field on the course)
+function contentKind(t) {
+  return { markdown: 'Reading', pdf: 'PDF', youtube: 'Video', video: 'Video', link: 'External' }[t] || 'Course';
+}
+
+function clockIcon() {
+  return `<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`;
+}
+
+// Build one premium course card. opts: { enrollment, status, actionHTML, badgeHTML }
+function courseCardHTML(course, opts = {}) {
+  const enr    = opts.enrollment;
+  const status = opts.status || enr?.status || 'not_enrolled';
+  const icon   = course.icon || '📖';
+  const cat    = (course.tags && course.tags[0]) || 'Training';
+  const grad   = courseGradient(course);
+  const dur    = course.duration_minutes ? `${course.duration_minutes} min` : '';
+  const pct    = enr?.progress || 0;
+
+  const progressBlock = (status === 'in_progress' || status === 'completed')
+    ? `<div class="cc-prog">
+         <div class="cc-prog-row"><span>Progress</span><b class="${status === 'completed' ? 'ok' : ''}">${status === 'completed' ? 'Completed' : pct + '%'}</b></div>
+         <div class="cc-mini"><i class="${status === 'completed' ? 'g' : 'b'}" style="width:${status === 'completed' ? 100 : pct}%"></i></div>
+       </div>`
+    : '';
+
+  return `<article class="course-card">
+    <div class="cc-thumb" style="background:${grad}">
+      <span class="cc-wm">${icon}</span>
+      <span class="cc-kind">${contentKind(course.content_type)}</span>
+      ${course.is_mandatory ? '<span class="cc-mand">Mandatory</span>' : ''}
+      ${dur ? `<span class="cc-dur">${clockIcon()} ${dur}</span>` : ''}
+    </div>
+    <div class="cc-body">
+      <div class="cc-eyebrow">${cat}</div>
+      <div class="cc-title">${course.title}</div>
+      <div class="cc-desc">${course.description || ''}</div>
+      ${progressBlock}
+    </div>
+    <div class="cc-foot">
+      ${opts.badgeHTML || `<span class="cc-tags">${(course.tags || []).slice(0, 2).join(' · ')}</span>`}
+      ${opts.actionHTML || ''}
+    </div>
+  </article>`;
+}
+
+// SVG progress ring (used by the dashboard "continue learning" hero)
+function progressRing(pct, size = 132, stroke = 12) {
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const off = c * (1 - Math.min(100, Math.max(0, pct)) / 100);
+  const cx = size / 2;
+  return `<div class="ring" style="width:${size}px;height:${size}px">
+    <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+      <defs><linearGradient id="ringgrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3B8EF3"/><stop offset="1" stop-color="#7FB0FF"/></linearGradient></defs>
+      <circle class="ring-bg" cx="${cx}" cy="${cx}" r="${r}" fill="none" stroke-width="${stroke}"/>
+      <circle class="ring-fg" cx="${cx}" cy="${cx}" r="${r}" fill="none" stroke-width="${stroke}" stroke-linecap="round" stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}"/>
+    </svg>
+    <div class="ring-mid"><div class="ring-pv">${pct}%</div><div class="ring-pl">COMPLETE</div></div>
+  </div>`;
+}
+
 // Simple markdown → HTML (handles headings, bold, italic, code, links, images, lists, hr, tables)
 function markdownToHtml(md) {
   if (!md) return '';

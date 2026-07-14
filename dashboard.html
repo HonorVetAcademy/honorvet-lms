@@ -40,12 +40,15 @@
     </header>
 
     <div class="page">
+      <!-- Continue learning feature hero -->
+      <div id="feature-area"></div>
+
       <!-- Stats -->
       <div class="stats-grid" id="stats-grid">
-        <div class="stat-card"><div class="stat-label">Enrolled</div><div class="stat-value" id="stat-enrolled">—</div><div class="stat-sub">courses assigned</div></div>
-        <div class="stat-card"><div class="stat-label">Completed</div><div class="stat-value" id="stat-completed">—</div><div class="stat-sub">courses finished</div></div>
-        <div class="stat-card"><div class="stat-label">In Progress</div><div class="stat-value" id="stat-inprogress">—</div><div class="stat-sub">currently active</div></div>
-        <div class="stat-card"><div class="stat-label">Compliance</div><div class="stat-value" id="stat-compliance">—</div><div class="stat-sub">mandatory completion</div></div>
+        <div class="stat-card"><div class="stat-icon" style="background:var(--blue-light);color:var(--blue)">📚</div><div class="stat-label">Enrolled</div><div class="stat-value" id="stat-enrolled">—</div><div class="stat-sub">courses assigned</div></div>
+        <div class="stat-card"><div class="stat-icon" style="background:var(--success-bg);color:var(--success)">✅</div><div class="stat-label">Completed</div><div class="stat-value" id="stat-completed">—</div><div class="stat-sub">courses finished</div></div>
+        <div class="stat-card"><div class="stat-icon" style="background:var(--warning-bg);color:var(--warning)">⏳</div><div class="stat-label">In Progress</div><div class="stat-value" id="stat-inprogress">—</div><div class="stat-sub">currently active</div></div>
+        <div class="stat-card"><div class="stat-icon" style="background:var(--red-light);color:var(--red)">🛡️</div><div class="stat-label">Compliance</div><div class="stat-value" id="stat-compliance">—</div><div class="stat-sub">mandatory completion</div></div>
       </div>
 
       <!-- My courses -->
@@ -113,16 +116,20 @@ document.getElementById('app-name').textContent    = APP_CONFIG.appName;
   document.getElementById('stat-inprogress').textContent = inProgress;
   document.getElementById('stat-compliance').textContent = compliance + '%';
 
+  // Build enrolled course list (course + its enrollment)
+  const enrolledCourses = enrollments.map(e => {
+    const c = courses.find(c => c.id === e.course_id);
+    return c ? { ...c, enrollment: e } : null;
+  }).filter(Boolean);
+
+  // Continue-learning hero — pick the most relevant active course
+  renderFeature(enrolledCourses, user);
+
   // Render enrolled courses
   const area = document.getElementById('my-courses-area');
   if (enrollments.length === 0) {
     area.innerHTML = `<div class="empty-state"><div class="empty-icon">📚</div><strong>No courses yet</strong><p>Browse the catalog to find and enroll in training.</p><a href="catalog.html" class="btn btn-primary" style="margin-top:14px;">Browse Catalog</a></div>`;
   } else {
-    const enrolledCourses = enrollments.map(e => {
-      const c = courses.find(c => c.id === e.course_id);
-      return c ? { ...c, enrollment: e } : null;
-    }).filter(Boolean);
-
     area.innerHTML = `<div class="course-grid">${enrolledCourses.map(c => courseCard(c, c.enrollment)).join('')}</div>`;
   }
 
@@ -139,30 +146,66 @@ document.getElementById('app-name').textContent    = APP_CONFIG.appName;
   }
 })();
 
+// Continue-learning hero: prefer an in-progress course, else a not-started one
+function renderFeature(enrolledCourses, user) {
+  const area = document.getElementById('feature-area');
+  if (!area) return;
+
+  const inProgress = enrolledCourses
+    .filter(c => c.enrollment?.status === 'in_progress')
+    .sort((a, b) => (b.enrollment.progress || 0) - (a.enrollment.progress || 0));
+  const notStarted = enrolledCourses.filter(c => c.enrollment?.status === 'not_started');
+
+  const pick = inProgress[0] || notStarted[0];
+
+  // No active course — show a lightweight call to explore
+  if (!pick) {
+    if (enrolledCourses.length === 0) { area.innerHTML = ''; return; }
+    area.innerHTML = `
+      <section class="feature">
+        <div class="feature-l">
+          <div class="feature-eyebrow">All caught up</div>
+          <h2>You've completed all your assigned training 🎉</h2>
+          <p class="feature-desc">Great work, ${user.name?.split(' ')[0] || 'there'}. Explore the catalog to keep building your skills.</p>
+          <div class="feature-actions"><a href="catalog.html" class="btn btn-white">Browse catalog</a></div>
+        </div>
+      </section>`;
+    return;
+  }
+
+  const pct = pick.enrollment?.progress || 0;
+  const started = pick.enrollment?.status === 'in_progress';
+  const cat = (pick.tags && pick.tags[0]) || 'Training';
+
+  area.innerHTML = `
+    <section class="feature">
+      <div class="feature-l">
+        <div class="feature-eyebrow">${started ? 'Continue learning' : 'Up next'}</div>
+        <h2>${pick.title}</h2>
+        <p class="feature-desc">${pick.description || `${cat} · ${contentKind(pick.content_type)}`}</p>
+        <div class="feature-track">
+          <div class="row"><span>Course progress</span><b>${started ? pct + '% complete' : 'Not started'}</b></div>
+          <div class="feature-bar"><i style="width:${started ? pct : 0}%"></i></div>
+        </div>
+        <div class="feature-actions">
+          <a href="course.html?id=${pick.id}" class="btn btn-white">
+            <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+            ${started ? 'Resume course' : 'Start course'}
+          </a>
+          <a href="catalog.html" class="btn btn-ondark">Browse catalog</a>
+        </div>
+      </div>
+      <div class="feature-r">${progressRing(started ? pct : 0)}</div>
+    </section>`;
+}
+
 function courseCard(course, enrollment) {
   const status = enrollment?.status || 'not_started';
-  const pct = enrollment?.progress || 0;
-  const icon = course.icon || '📖';
-  return `
-    <div class="course-card">
-      <div class="course-card-header">
-        <span class="course-icon">${icon}</span>
-        ${course.is_mandatory ? '<span class="mandatory-tag">MANDATORY</span>' : ''}
-      </div>
-      <div class="course-card-body">
-        <div class="course-card-title">${course.title}</div>
-        <div class="course-card-desc">${course.description || ''}</div>
-        <div class="course-card-meta">
-          <span>⏱ ${course.duration_minutes || '?'} min</span>
-          ${statusBadge(status)}
-        </div>
-        ${status !== 'not_started' ? `<div style="margin-top:10px"><div class="progress-bar"><div class="progress-fill ${status==='completed'?'done':''}" style="width:${pct}%"></div></div></div>` : ''}
-      </div>
-      <div class="course-card-footer">
-        <span style="font-size:12px;color:var(--text-dim)">${course.tags?.slice(0,2).join(' · ') || ''}</span>
-        <a href="course.html?id=${course.id}" class="btn btn-primary btn-sm">${status === 'completed' ? 'Review' : status === 'in_progress' ? 'Continue' : 'Start'}</a>
-      </div>
-    </div>`;
+  const label  = status === 'completed' ? 'Review' : status === 'in_progress' ? 'Continue' : 'Start';
+  return courseCardHTML(course, {
+    enrollment,
+    actionHTML: `<a href="course.html?id=${course.id}" class="btn btn-primary btn-sm">${label}</a>`,
+  });
 }
 </script>
 </body>
