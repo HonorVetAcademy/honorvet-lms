@@ -294,36 +294,17 @@ async function markComplete() {
 }
 
 function downloadCertificate() {
-  const name   = currentUser.name || currentUser.email;
-  const title  = course.title;
-  const date   = fmtDate(enrollment?.completed_at);
-  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
-    <title>Certificate — ${title}</title>
-    <style>
-      body { font-family: Georgia, serif; background:#f8f5ee; margin:0; display:flex; align-items:center; justify-content:center; min-height:100vh; }
-      .cert { background:#fff; border:8px solid #1a56db; border-radius:12px; padding:60px 80px; max-width:700px; text-align:center; box-shadow:0 8px 40px rgba(0,0,0,.12); }
-      h1 { color:#1a56db; font-size:42px; margin:0 0 4px; letter-spacing:2px; }
-      .sub { color:#6b7280; font-size:14px; letter-spacing:3px; text-transform:uppercase; margin-bottom:40px; }
-      .body { color:#374151; font-size:18px; line-height:1.7; }
-      .name { font-size:32px; color:#1a1d23; font-weight:700; border-bottom:2px solid #1a56db; display:inline-block; padding-bottom:6px; margin:12px 0; }
-      .course { font-size:22px; color:#1a56db; font-style:italic; margin:12px 0; }
-      .date { color:#9ca3af; font-size:13px; margin-top:40px; }
-      .logo { font-size:13px; font-weight:700; color:#1a56db; letter-spacing:1px; margin-top:8px; }
-    </style></head><body>
-    <div class="cert">
-      <h1>Certificate</h1>
-      <div class="sub">of Completion</div>
-      <div class="body">This certifies that</div>
-      <div class="name">${name}</div>
-      <div class="body">has successfully completed</div>
-      <div class="course">${title}</div>
-      <div class="date">Completed on ${date}</div>
-      <div class="logo">HonorVet Technologies — Learning Platform</div>
-    </div></body></html>`;
-  const w = window.open('', '_blank');
-  w.document.write(html);
-  w.document.close();
-  w.print();
+  const firstName = (currentUser.name || currentUser.email).split(' ')[0];
+  const date      = fmtDate(enrollment?.completed_at);
+  const params    = new URLSearchParams({
+    name:   firstName,
+    course: course.title || '',
+    date:   date || '',
+    desc:   course.description
+      ? `has successfully completed the <strong>${course.title}</strong> training program — ${course.description}`
+      : '',
+  });
+  window.open(`certificate.html?${params.toString()}`, '_blank');
 }
 
 // ── Player ─────────────────────────────────────────────────────

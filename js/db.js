@@ -188,13 +188,18 @@ const Enrollments = {
     if (error) throw error;
     if (status === 'completed') {
       try {
-        await Certificates.issue(userId, courseId);
         const course = await Courses.getById(courseId);
+        const title  = course?.title || courseId;
+        await Notifications.create(userId, 'course_completed',
+          `Course completed: ${title}`,
+          `You successfully completed "${title}". Great work!`,
+          { course_id: courseId, course_title: title });
+        await Certificates.issue(userId, courseId);
         await Notifications.create(userId, 'certificate_issued',
           'Certificate earned!',
-          `You completed "${course?.title || courseId}" and earned a certificate.`,
-          { course_id: courseId });
-      } catch(e) { console.warn('Certificate error:', e.message); }
+          `Your certificate for "${title}" is ready to download.`,
+          { course_id: courseId, course_title: title });
+      } catch(e) { console.warn('Certificate/notification error:', e.message); }
     }
     return data;
   },
@@ -206,8 +211,9 @@ const Enrollments = {
     try {
       const course = await Courses.getById(courseId);
       await Notifications.bulkCreate(userIds, 'course_assigned',
-        'New course assigned', `You have been enrolled in "${course?.title || courseId}"`,
-        { course_id: courseId });
+        `New course assigned: ${course?.title || courseId}`,
+        `You have been enrolled in "${course?.title || courseId}". Log in to start learning.`,
+        { course_id: courseId, course_title: course?.title || courseId });
     } catch(e) { console.warn('Notification error:', e.message); }
     return data;
   },
