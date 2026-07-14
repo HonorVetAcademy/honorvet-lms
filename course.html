@@ -64,6 +64,11 @@
                   I confirm I have completed this course content.
                 </label>
               </div>
+              <div id="cert-upload-wrap" style="display:none;margin-top:8px">
+                <p style="font-size:12.5px;color:var(--text-muted);margin:0 0 8px">Upload your completion certificate (PDF, JPG, or PNG):</p>
+                <input type="file" id="cert-file" accept=".pdf,.jpg,.jpeg,.png" style="width:100%;font-size:12px;cursor:pointer;padding:4px" onchange="onCertFileSelected(this)">
+                <div id="cert-upload-status" style="font-size:12px;margin-top:6px;display:none"></div>
+              </div>
             </div>
 
             <button class="btn btn-success" style="width:100%;justify-content:center" id="complete-btn" onclick="markComplete()" disabled>
@@ -195,8 +200,8 @@ function startTracking(course) {
     document.getElementById('tracking-msg').textContent = 'Watch the complete video to unlock completion.';
     // Player handles unlock via onYouTubeVideoEnded()
   } else if (type === 'link') {
-    document.getElementById('tracking-msg').textContent = 'Open the content, then confirm below to unlock completion.';
-    document.getElementById('ack-wrap').style.display = '';
+    document.getElementById('tracking-msg').textContent = 'Complete the external course, then upload your certificate below to unlock completion.';
+    document.getElementById('cert-upload-wrap').style.display = '';
   } else {
     // markdown / pdf — time gate
     trackMinSeconds = Math.min(600, Math.max(120, Math.floor((course.duration_minutes || 10) * 60 * 0.2)));
@@ -250,6 +255,29 @@ function onAckChange() {
 
 function onYouTubeVideoEnded() {
   unlockComplete();
+}
+
+async function onCertFileSelected(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const status = document.getElementById('cert-upload-status');
+  status.style.display = '';
+  status.style.color = 'var(--text-muted)';
+  status.textContent = 'Uploading certificate…';
+  try {
+    const ext = file.name.split('.').pop();
+    const path = `${currentUser.id}/${courseId}_${Date.now()}.${ext}`;
+    const { error } = await supabase.createClient(SUPABASE_URL, SUPABASE_ANON)
+      .storage.from('cert-uploads').upload(path, file, { upsert: true });
+    if (error) throw error;
+    status.style.color = 'var(--success)';
+    status.textContent = '✓ Certificate uploaded successfully!';
+    unlockComplete();
+  } catch(e) {
+    status.style.color = 'var(--danger)';
+    status.textContent = 'Upload failed: ' + e.message;
+    input.value = '';
+  }
 }
 
 // ── Mark complete ──────────────────────────────────────────────
@@ -337,6 +365,11 @@ async function renderPlayer(course) {
         <p style="font-size:15px;color:var(--text-muted);margin-bottom:20px">This course opens in an external resource.</p>
         <a href="${course.content_url}" target="_blank" rel="noopener" class="btn btn-primary btn-lg">Open Content ↗</a>
         <p style="margin-top:16px;font-size:12px;color:var(--text-dim)">${course.content_url}</p>
+        <div style="margin-top:28px;padding:16px 20px;background:#fefce8;border:1px solid #fbbf24;border-radius:10px;text-align:left">
+          <p style="margin:0;font-size:13.5px;color:#78350f;line-height:1.7">
+            <strong>📋 Important:</strong> Once you complete this course on the external platform, please come back here and upload your completion certificate using the panel on the right. Your course will only be marked as complete after your certificate has been submitted.
+          </p>
+        </div>
       </div>`;
     return;
   }
