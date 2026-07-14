@@ -267,8 +267,7 @@ async function onCertFileSelected(input) {
   try {
     const ext = file.name.split('.').pop();
     const path = `${currentUser.id}/${courseId}_${Date.now()}.${ext}`;
-    const { error } = await supabase.createClient(SUPABASE_URL, SUPABASE_ANON)
-      .storage.from('cert-uploads').upload(path, file, { upsert: true });
+    const { error } = await sb().storage.from('cert-uploads').upload(path, file, { upsert: true });
     if (error) throw error;
     status.style.color = 'var(--success)';
     status.textContent = '✓ Certificate uploaded successfully!';
