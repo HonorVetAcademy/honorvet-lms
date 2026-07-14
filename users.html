@@ -98,23 +98,23 @@
   </div>
 </div>
 
-<!-- Import CSV modal -->
+<!-- Import CSV/Excel modal -->
 <div class="modal-overlay" id="import-modal">
-  <div class="modal">
+  <div class="modal" style="max-width:640px">
     <div class="modal-header">
-      <span class="modal-title">Import Users from CSV</span>
+      <span class="modal-title">Import Users</span>
       <button class="modal-close" onclick="closeModal('import-modal')">&times;</button>
     </div>
     <div class="modal-body">
       <div id="import-alert"></div>
       <div class="alert alert-info" style="margin-bottom:14px">
-        CSV format: <code>name,email,role,department</code><br>
-        Role must be: employee, manager, hr, trainer, or admin
+        Supports <strong>CSV</strong> and <strong>Excel (.xlsx)</strong>. Required columns: <code>name, email, role, department</code><br>
+        Roles: employee, manager, hr, trainer, admin
       </div>
-      <a href="#" onclick="downloadTemplate()" class="btn btn-ghost btn-sm" style="margin-bottom:12px">⬇ Download template</a>
+      <a href="#" onclick="downloadTemplate()" class="btn btn-ghost btn-sm" style="margin-bottom:12px">⬇ Download CSV template</a>
       <div class="form-group">
-        <label class="form-label">CSV file</label>
-        <input type="file" id="csv-file" accept=".csv" class="form-input" style="padding:6px">
+        <label class="form-label">CSV or Excel file</label>
+        <input type="file" id="csv-file" accept=".csv,.xlsx,.xls" class="form-input" style="padding:6px">
       </div>
       <div id="csv-preview" style="margin-top:10px"></div>
     </div>
@@ -153,6 +153,7 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="js/config.js"></script>
 <script src="js/db.js"></script>
 <script src="js/app.js"></script>
@@ -233,52 +234,118 @@ async function addUser() {
   btn.disabled = false; btn.textContent = 'Add User';
 }
 
-// CSV import
+// CSV / Excel import
 document.getElementById('csv-file').onchange = function() {
   const file = this.files[0];
   if (!file) return;
+  const isExcel = /\.(xlsx|xls)$/i.test(file.name);
   const reader = new FileReader();
   reader.onload = e => {
-    const lines = e.target.result.trim().split('\n').filter(Boolean);
-    const header = lines[0].toLowerCase().split(',').map(h => h.trim());
-    csvRows = lines.slice(1).map(line => {
-      const vals = line.split(',').map(v => v.trim().replace(/^"|"$/g,''));
-      const obj = {};
-      header.forEach((h,i) => obj[h] = vals[i] || '');
-      return obj;
-    }).filter(r => r.email);
-    document.getElementById('csv-preview').innerHTML = `
-      <div class="alert alert-info">${csvRows.length} users found in CSV</div>
-      <div class="table-wrap" style="max-height:180px;overflow-y:auto">
-        <table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Dept</th></tr></thead>
-        <tbody>${csvRows.slice(0,5).map(r => `<tr><td>${r.name||'—'}</td><td>${r.email}</td><td>${r.role||'employee'}</td><td>${r.department||'—'}</td></tr>`).join('')}
-        ${csvRows.length > 5 ? `<tr><td colspan="4" style="color:var(--text-dim);font-style:italic">… and ${csvRows.length-5} more</td></tr>` : ''}</tbody></table>
-      </div>`;
-    document.getElementById('import-btn').disabled = false;
+    let rows = [];
+    if (isExcel) {
+      const wb = XLSX.read(e.target.result, { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const data = XLSX.utils.sheet_to_json(ws, { defval: '' });
+      rows = data.map(r => {
+        const norm = {};
+        Object.keys(r).forEach(k => norm[k.toLowerCase().trim().replace(/\s+/g,'_')] = String(r[k]).trim());
+        return {
+          name:       norm.name || '',
+          email:      (norm.email || norm.email_address || norm['email address'] || '').toLowerCase().trim(),
+          role:       norm.role || 'employee',
+          department: norm.department || norm.division || '',
+        };
+      }).filter(r => r.email);
+    } else {
+      const lines = e.target.result.trim().split('\n').filter(Boolean);
+      const header = lines[0].toLowerCase().split(',').map(h => h.trim());
+      rows = lines.slice(1).map(line => {
+        const vals = line.split(',').map(v => v.trim().replace(/^"|"$/g,''));
+        const obj = {};
+        header.forEach((h,i) => obj[h] = vals[i] || '');
+        return { name: obj.name||'', email: (obj.email||'').toLowerCase().trim(), role: obj.role||'employee', department: obj.department||'' };
+      }).filter(r => r.email);
+    }
+    csvRows = rows;
+    renderImportPreview(csvRows);
+    document.getElementById('import-btn').disabled = csvRows.length === 0;
   };
-  reader.readAsText(file);
+  if (isExcel) reader.readAsArrayBuffer(file);
+  else reader.readAsText(file);
 };
 
+function renderImportPreview(rows) {
+  if (!rows.length) { document.getElementById('csv-preview').innerHTML = ''; return; }
+
+  // Group by role
+  const byRole = {};
+  rows.forEach(r => { const k = r.role||'employee'; (byRole[k]=byRole[k]||[]).push(r); });
+
+  // Group by department
+  const byDept = {};
+  rows.forEach(r => { const k = r.department||'No Department'; (byDept[k]=byDept[k]||[]).push(r); });
+
+  const roleColors = { admin:'#dc2626', manager:'#2563eb', hr:'#7c3aed', trainer:'#d97706', employee:'#16a34a' };
+
+  const roleCards = Object.entries(byRole).map(([role, users]) =>
+    `<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 14px;min-width:120px">
+      <div style="font-size:11px;font-weight:700;color:${roleColors[role]||'var(--text-muted)'};text-transform:uppercase;letter-spacing:.5px">${role}</div>
+      <div style="font-size:22px;font-weight:800;margin:4px 0">${users.length}</div>
+    </div>`
+  ).join('');
+
+  const deptRows = Object.entries(byDept).sort((a,b)=>b[1].length-a[1].length).map(([dept, users]) =>
+    `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px">
+      <span>${dept}</span>
+      <span style="font-weight:600;color:var(--brand)">${users.length}</span>
+    </div>`
+  ).join('');
+
+  document.getElementById('csv-preview').innerHTML = `
+    <div style="margin-bottom:10px">
+      <strong style="font-size:13px">${rows.length} users ready to import</strong>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px">${roleCards}</div>
+    <div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px">By Department</div>
+    <div style="max-height:160px;overflow-y:auto">${deptRows}</div>`;
+}
+
 async function importUsers() {
-  const btn = document.getElementById('import-btn');
-  const alert = document.getElementById('import-alert');
+  const btn   = document.getElementById('import-btn');
+  const alertEl = document.getElementById('import-alert');
   if (!csvRows.length) return;
-  btn.disabled = true; btn.textContent = 'Importing…';
-  let success = 0, failed = [];
-  for (const row of csvRows) {
-    try {
-      const tempPass = 'HonorVet' + Math.random().toString(36).slice(2,8) + '!1';
-      const { data, error } = await sb().auth.signUp({ email: row.email, password: tempPass, options: { data: { name: row.name, role: row.role||'employee', department: row.department||null } } });
-      if (error) throw error;
-      if (data.user) await Users.upsert(data.user.id, { email: row.email, name: row.name, role: row.role||'employee', department: row.department||null });
-      success++;
-    } catch(e) { failed.push(row.email); }
+  btn.disabled = true; btn.textContent = `Importing ${csvRows.length} users…`;
+  alertEl.innerHTML = '';
+
+  try {
+    const session = await sb().auth.getSession();
+    const token   = session?.data?.session?.access_token;
+
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/bulk-import-users`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token || SUPABASE_ANON}`,
+      },
+      body: JSON.stringify({ users: csvRows }),
+    });
+
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error || 'Import failed');
+
+    let msg = `<div class="alert alert-success">✓ ${result.success} users imported successfully.</div>`;
+    if (result.failed?.length) {
+      msg += `<div class="alert alert-error" style="margin-top:8px">
+        Failed (${result.failed.length}): ${result.failed.map(f => `${f.email} — ${f.reason}`).join('<br>')}
+      </div>`;
+    }
+    alertEl.innerHTML = msg;
+    btn.textContent = 'Done ✓';
+    await loadUsers();
+  } catch(e) {
+    alertEl.innerHTML = `<div class="alert alert-error">${e.message}</div>`;
+    btn.disabled = false; btn.textContent = 'Import';
   }
-  let msg = `<div class="alert alert-success">✓ Imported ${success} users.</div>`;
-  if (failed.length) msg += `<div class="alert alert-error">Failed: ${failed.join(', ')}</div>`;
-  alert.innerHTML = msg;
-  btn.textContent = 'Done';
-  await loadUsers();
 }
 
 function downloadTemplate() {
