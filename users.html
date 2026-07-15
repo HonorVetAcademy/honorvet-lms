@@ -37,12 +37,15 @@
       <div id="alert-area"></div>
 
       <!-- Filter bar -->
-      <div style="display:flex;gap:10px;margin-bottom:18px">
-        <input class="form-input" type="search" id="search" placeholder="Search by name or email…" style="flex:1">
+      <div style="display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap">
+        <input class="form-input" type="search" id="search" placeholder="Search by name or email…" style="flex:1;min-width:200px">
         <select class="form-select" id="filter-role" style="width:160px">
           <option value="">All roles</option>
           <option>admin</option><option>hr</option><option>manager</option>
           <option>employee</option><option>trainer</option>
+        </select>
+        <select class="form-select" id="filter-dept" style="width:180px">
+          <option value="">All departments</option>
         </select>
       </div>
 
@@ -173,12 +176,19 @@ let allUsers = [], csvRows = [];
 
   document.getElementById('search').oninput = renderTable;
   document.getElementById('filter-role').onchange = renderTable;
+  document.getElementById('filter-dept').onchange = renderTable;
 })();
 
 async function loadUsers() {
   try {
     allUsers = await Users.getAll();
     document.getElementById('user-count-sub').textContent = `${allUsers.length} users in your organisation`;
+    // Populate department filter from real data
+    const depts = [...new Set(allUsers.map(u => u.department).filter(Boolean))].sort();
+    const sel = document.getElementById('filter-dept');
+    const current = sel.value;
+    sel.innerHTML = '<option value="">All departments</option>' + depts.map(d => `<option>${d}</option>`).join('');
+    sel.value = current;
     renderTable();
   } catch(e) {
     document.getElementById('users-table-wrap').innerHTML = `<div class="empty-state"><p>Could not load users.<br><small>${e.message}</small></p></div>`;
@@ -188,9 +198,11 @@ async function loadUsers() {
 function renderTable() {
   const q    = document.getElementById('search').value.toLowerCase();
   const role = document.getElementById('filter-role').value;
+  const dept = document.getElementById('filter-dept').value;
   const rows = allUsers.filter(u =>
     (!q    || u.name?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q)) &&
-    (!role || u.role === role)
+    (!role || u.role === role) &&
+    (!dept || u.department === dept)
   );
   const wrap = document.getElementById('users-table-wrap');
   if (rows.length === 0) {

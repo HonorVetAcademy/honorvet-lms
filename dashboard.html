@@ -33,9 +33,10 @@
         <div class="topbar-title" id="welcome-title">Dashboard</div>
         <div class="topbar-sub" id="welcome-sub">Here's your learning summary</div>
       </div>
-      <div class="topbar-actions" style="display:flex;align-items:center;gap:10px">
+      <div class="topbar-actions">
+        <div id="top-search-wrap"></div>
         <div id="notif-bell-wrap"></div>
-        <a href="catalog.html" class="btn btn-primary">${iconPlus_inline()} Browse Courses</a>
+        <a href="catalog.html" class="btn btn-primary btn-sm">Browse Courses</a>
       </div>
     </header>
 
@@ -43,22 +44,34 @@
       <!-- Continue learning feature hero -->
       <div id="feature-area"></div>
 
+      <!-- Browse by category -->
+      <div class="section-head">
+        <div class="section-title">Browse by category</div>
+        <a href="catalog.html" class="btn btn-ghost btn-sm">All courses →</a>
+      </div>
+      <div id="cat-area"></div>
+
       <!-- Stats -->
       <div class="stats-grid" id="stats-grid">
-        <div class="stat-card"><div class="stat-icon" style="background:var(--blue-light);color:var(--blue)">📚</div><div class="stat-label">Enrolled</div><div class="stat-value" id="stat-enrolled">—</div><div class="stat-sub">courses assigned</div></div>
+        <div class="stat-card pop pop-blue"><div class="stat-icon">📚</div><div class="stat-label">Enrolled</div><div class="stat-value" id="stat-enrolled">—</div><div class="stat-sub">courses assigned</div></div>
         <div class="stat-card"><div class="stat-icon" style="background:var(--success-bg);color:var(--success)">✅</div><div class="stat-label">Completed</div><div class="stat-value" id="stat-completed">—</div><div class="stat-sub">courses finished</div></div>
         <div class="stat-card"><div class="stat-icon" style="background:var(--warning-bg);color:var(--warning)">⏳</div><div class="stat-label">In Progress</div><div class="stat-value" id="stat-inprogress">—</div><div class="stat-sub">currently active</div></div>
-        <div class="stat-card"><div class="stat-icon" style="background:var(--red-light);color:var(--red)">🛡️</div><div class="stat-label">Compliance</div><div class="stat-value" id="stat-compliance">—</div><div class="stat-sub">mandatory completion</div></div>
+        <div class="stat-card pop pop-green"><div class="stat-icon">🛡️</div><div class="stat-label">Compliance</div><div class="stat-value" id="stat-compliance">—</div><div class="stat-sub">mandatory completion</div></div>
       </div>
 
-      <!-- My courses -->
-      <div class="section-head">
-        <div class="section-title">My Courses</div>
-        <a href="catalog.html" class="btn btn-ghost btn-sm">View all →</a>
-      </div>
+      <!-- Charts -->
+      <div id="charts-area"></div>
 
-      <div id="my-courses-area">
-        <div class="spinner"></div>
+      <!-- Courses + side panels -->
+      <div class="dash-2col">
+        <div>
+          <div class="section-head">
+            <div class="section-title">My Courses</div>
+            <a href="catalog.html" class="btn btn-ghost btn-sm">View all →</a>
+          </div>
+          <div id="my-courses-area"><div class="spinner"></div></div>
+        </div>
+        <div id="side-panels"></div>
       </div>
 
       <!-- Admin org stats (shown for admin/hr/manager) -->
@@ -82,9 +95,8 @@
 <script src="js/config.js"></script>
 <script src="js/db.js"></script>
 <script src="js/app.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script>
-function iconPlus_inline() { return ''; }
-
 document.getElementById('logo-letter').textContent = APP_CONFIG.logoLetter;
 document.getElementById('app-name').textContent    = APP_CONFIG.appName;
 
@@ -96,6 +108,7 @@ document.getElementById('app-name').textContent    = APP_CONFIG.appName;
   renderNav('dashboard', user);
   renderNotifBell(user.id, 'notif-bell-wrap');
   renderUserChip(user);
+  document.getElementById('top-search-wrap').innerHTML = topSearchHTML();
 
   // Load enrollments + courses in parallel
   const [enrollments, courses] = await Promise.all([
@@ -124,6 +137,17 @@ document.getElementById('app-name').textContent    = APP_CONFIG.appName;
 
   // Continue-learning hero — pick the most relevant active course
   renderFeature(enrolledCourses, user);
+
+  // Colourful category tiles (counts from real tags)
+  document.getElementById('cat-area').innerHTML =
+    categoryTilesHTML(courses) ||
+    `<div class="card card-body" style="color:var(--ink-3);font-size:13px">No categories yet — add tags to your courses to group them here.</div>`;
+
+  // Side panels — real substitutes for the template's "Best Instructors"
+  renderSidePanels(courses);
+
+  // Charts (Chart.js) — org-wide for admin/hr/manager, personal otherwise
+  renderDashCharts(user, enrollments);
 
   // Render enrolled courses
   const area = document.getElementById('my-courses-area');
@@ -206,6 +230,117 @@ function courseCard(course, enrollment) {
     enrollment,
     actionHTML: `<a href="course.html?id=${course.id}" class="btn btn-primary btn-sm">${label}</a>`,
   });
+}
+
+// Side panels: Top Categories + Recently Added (all real data)
+function renderSidePanels(courses) {
+  const el = document.getElementById('side-panels');
+  if (!el) return;
+
+  const counts = {};
+  courses.forEach(c => (c.tags || []).forEach(t => { counts[t] = (counts[t] || 0) + 1; }));
+  const cats = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  const catRows = cats.length
+    ? cats.map(([tag, n], i) => {
+        const col = CAT_COLORS[i % CAT_COLORS.length];
+        return `<a class="prow" href="catalog.html?tag=${encodeURIComponent(tag)}">
+          <div class="ptile" style="background:${col.c}">${catIcon(tag)}</div>
+          <div class="pmain"><div class="pt">${tag}</div><div class="ps">${n} course${n !== 1 ? 's' : ''}</div></div>
+          <span class="ppill">View</span></a>`;
+      }).join('')
+    : `<div style="padding:16px;color:var(--ink-3);font-size:13px">No categories yet.</div>`;
+
+  const recent = [...courses].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)).slice(0, 5);
+  const recRows = recent.length
+    ? recent.map(c => `<a class="prow" href="course.html?id=${c.id}">
+        <div class="ptile" style="background:${courseGradient(c)}">${c.icon || '📖'}</div>
+        <div class="pmain"><div class="pt">${c.title}</div><div class="ps">${(c.tags && c.tags[0]) || 'Training'}${c.duration_minutes ? ` · ${c.duration_minutes} min` : ''}</div></div>
+        <span class="ppill">Open</span></a>`).join('')
+    : `<div style="padding:16px;color:var(--ink-3);font-size:13px">No courses yet.</div>`;
+
+  el.innerHTML = `
+    <div class="panel">
+      <div class="panel-head"><span class="panel-title">Top Categories</span></div>
+      <div class="panel-list">${catRows}</div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><span class="panel-title">Recently Added</span><a href="catalog.html" class="btn btn-ghost btn-sm">All</a></div>
+      <div class="panel-list">${recRows}</div>
+    </div>`;
+}
+
+// Charts — completions-over-time (bar) + status breakdown (doughnut)
+async function renderDashCharts(user, personalEnrollments) {
+  if (typeof Chart === 'undefined') return;
+  const area = document.getElementById('charts-area');
+  if (!area) return;
+
+  const isOrg = ['admin', 'hr', 'manager'].includes(user.role);
+  let data = personalEnrollments;
+  if (isOrg) { try { data = await Enrollments.getAll(); } catch { data = personalEnrollments; } }
+
+  area.innerHTML = `
+    <div class="chart-grid">
+      <div class="chart-card">
+        <div class="chart-head">
+          <div><div class="chart-title">Completions over time</div><div class="chart-sub">${isOrg ? 'Across your organisation' : 'Your completed courses'}</div></div>
+          <select class="mini-select" id="chart-range" onchange="window._renderTrend && window._renderTrend()">
+            <option value="6">Last 6 months</option>
+            <option value="12">Last 12 months</option>
+          </select>
+        </div>
+        <div class="chart-canvas-wrap"><canvas id="trend-chart"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-head"><div class="chart-title">${isOrg ? 'Organisation' : 'My'} progress</div></div>
+        <div class="chart-canvas-wrap"><canvas id="status-chart"></canvas></div>
+      </div>
+    </div>`;
+
+  const completed = data.filter(e => e.status === 'completed').length;
+  const inprog    = data.filter(e => e.status === 'in_progress').length;
+  const notstart  = data.filter(e => e.status === 'not_started').length;
+
+  new Chart(document.getElementById('status-chart'), {
+    type: 'doughnut',
+    data: { labels: ['Completed', 'In progress', 'Not started'],
+      datasets: [{ data: [completed, inprog, notstart], backgroundColor: ['#0A7C4E', '#0056D2', '#D8E0EE'], borderWidth: 0 }] },
+    options: { cutout: '66%', maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 8, font: { size: 12 } } } } }
+  });
+
+  let trendChart = null;
+  window._renderTrend = function () {
+    const months = parseInt(document.getElementById('chart-range').value, 10) || 6;
+    const b = buildMonthBuckets(data, months);
+    if (trendChart) trendChart.destroy();
+    trendChart = new Chart(document.getElementById('trend-chart'), {
+      type: 'bar',
+      data: { labels: b.labels, datasets: [{ label: 'Completions', data: b.counts, backgroundColor: '#0056D2', borderRadius: 6, maxBarThickness: 38 }] },
+      options: { maintainAspectRatio: false, plugins: { legend: { display: false } },
+        scales: { y: { beginAtZero: true, ticks: { precision: 0 } }, x: { grid: { display: false } } } }
+    });
+  };
+  window._renderTrend();
+}
+
+function buildMonthBuckets(enrollments, months) {
+  const labels = [], counts = [], keys = [];
+  const now = new Date();
+  for (let i = months - 1; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    keys.push(d.getFullYear() + '-' + d.getMonth());
+    labels.push(d.toLocaleDateString('en-US', { month: 'short' }));
+    counts.push(0);
+  }
+  enrollments.forEach(e => {
+    if (e.status === 'completed' && e.completed_at) {
+      const d = new Date(e.completed_at);
+      const idx = keys.indexOf(d.getFullYear() + '-' + d.getMonth());
+      if (idx >= 0) counts[idx]++;
+    }
+  });
+  return { labels, counts };
 }
 </script>
 </body>

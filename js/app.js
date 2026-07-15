@@ -58,26 +58,82 @@ function renderNav(activePage, user) {
   if (!nav) return;
 
   const items = [
-    { href: 'dashboard.html', icon: iconHome(),    label: 'Dashboard',   page: 'dashboard' },
-    { href: 'catalog.html',   icon: iconCatalog(), label: 'My Courses',  page: 'catalog'   },
-    { href: 'paths.html',     icon: iconPath(),    label: 'My Paths',    page: 'paths'     },
+    { href: 'dashboard.html', icon: iconHome(),    label: 'Dashboard',      page: 'dashboard', color: '#0056D2' },
+    { href: 'catalog.html',   icon: iconCatalog(), label: 'My Courses',     page: 'catalog',   color: '#7A4BC9' },
+    { href: 'paths.html',     icon: iconPath(),    label: 'Learning Paths', page: 'paths',     color: '#0A7C4E' },
   ];
 
   if (isAdmin || isManager) {
-    items.push({ href: 'reports.html', icon: iconChart(), label: 'Reports', page: 'reports' });
+    items.push({ href: 'reports.html', icon: iconChart(), label: 'Reports', page: 'reports', color: '#A05C00' });
   }
   if (isAdmin) {
     items.push(
-      { href: 'users.html',  icon: iconUsers(),    label: 'Users',          page: 'users'  },
-      { href: 'admin.html',  icon: iconSettings(), label: 'Manage Courses', page: 'admin'  }
+      { href: 'users.html',  icon: iconUsers(),    label: 'Users',          page: 'users', color: '#C8102E' },
+      { href: 'admin.html',  icon: iconSettings(), label: 'Manage Courses', page: 'admin', color: '#3B5BA9' }
     );
   }
 
-  nav.innerHTML = items.map(i => `
-    <a href="${i.href}" class="nav-item${activePage === i.page ? ' active' : ''}">
-      ${i.icon}<span>${i.label}</span>
-    </a>
-  `).join('');
+  nav.innerHTML = items.map(i => {
+    const active = activePage === i.page;
+    return `<a href="${i.href}" class="nav-item${active ? ' active' : ''}">
+      <span class="nav-ico" style="color:${i.color};background:${hexA(i.color, active ? .2 : .11)}">${i.icon}</span>
+      <span>${i.label}</span>
+    </a>`;
+  }).join('');
+}
+
+// hex → rgba with alpha (for soft coloured tiles)
+function hexA(hex, a) {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+}
+
+// Global topbar search — Enter navigates to the catalog with the query
+function topSearchHTML(placeholder = 'Search courses…') {
+  return `<form class="topbar-search" onsubmit="return goTopSearch(event)">
+    <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <input type="search" id="top-search" placeholder="${placeholder}">
+  </form>`;
+}
+function goTopSearch(e) {
+  e.preventDefault();
+  const q = (document.getElementById('top-search')?.value || '').trim();
+  location.href = 'catalog.html' + (q ? '?q=' + encodeURIComponent(q) : '');
+  return false;
+}
+
+// Category colour palette + keyword icon for tiles
+const CAT_COLORS = [
+  { c: '#0056D2', b: '#EBF3FF' }, { c: '#7A4BC9', b: '#F2ECFC' },
+  { c: '#0A7C4E', b: '#E6F7F0' }, { c: '#C8102E', b: '#FDECEF' },
+  { c: '#A05C00', b: '#FBF1E1' }, { c: '#0A6C8A', b: '#E4F5FA' },
+];
+function catIcon(tag) {
+  const t = (tag || '').toLowerCase();
+  if (/secur|cyber|phish/.test(t)) return '🛡️';
+  if (/cloud|azure|aws/.test(t))   return '☁️';
+  if (/data|analy|ai|power/.test(t)) return '📊';
+  if (/lead|manage|team/.test(t))  return '🎖️';
+  if (/safe|compli|osha|hr/.test(t)) return '⚠️';
+  if (/it|support|hardware|network/.test(t)) return '💻';
+  if (/dev|code|program|software/.test(t)) return '⚙️';
+  return '📚';
+}
+
+// Colourful category tiles (counts computed from real course tags)
+function categoryTilesHTML(courses, limit = 6) {
+  const counts = {};
+  courses.forEach(c => (c.tags || []).forEach(t => { counts[t] = (counts[t] || 0) + 1; }));
+  const cats = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, limit);
+  if (!cats.length) return '';
+  return `<div class="cat-tiles">` + cats.map(([tag, n], i) => {
+    const col = CAT_COLORS[i % CAT_COLORS.length];
+    return `<a class="cat-tile" href="catalog.html?tag=${encodeURIComponent(tag)}" style="background:${col.b}">
+      <div class="cat-ico" style="background:${col.c}">${catIcon(tag)}</div>
+      <div class="cat-name">${tag}</div>
+      <div class="cat-count" style="color:${col.c}">${n} course${n !== 1 ? 's' : ''}</div>
+    </a>`;
+  }).join('') + `</div>`;
 }
 
 // Render user chip in sidebar footer

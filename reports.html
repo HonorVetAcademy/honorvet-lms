@@ -27,6 +27,10 @@
         <div class="topbar-sub">Training completion and compliance overview</div>
       </div>
       <div class="topbar-actions" style="display:flex;align-items:center;gap:10px">
+        <div class="topbar-search">
+          <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="search" id="report-search" placeholder="Filter rows…" oninput="filterReportRows()">
+        </div>
         <div id="notif-bell-wrap"></div>
         <button class="btn btn-secondary" onclick="exportCSV()">⬇ Export CSV</button>
       </div>
@@ -83,6 +87,18 @@ function switchTab(btn) {
   document.querySelectorAll('#tabs-wrap > div[id^="tab-"]').forEach(p => p.style.display = 'none');
   btn.classList.add('active');
   document.getElementById(btn.dataset.tab).style.display = '';
+  filterReportRows();
+}
+
+// Live filter across the visible tab's table rows / compliance cards
+function filterReportRows() {
+  const q = (document.getElementById('report-search')?.value || '').toLowerCase();
+  document.querySelectorAll('#tabs-wrap table tbody tr').forEach(tr => {
+    tr.style.display = (!q || tr.textContent.toLowerCase().includes(q)) ? '' : 'none';
+  });
+  document.querySelectorAll('#compliance-area .card').forEach(card => {
+    card.style.display = (!q || card.textContent.toLowerCase().includes(q)) ? '' : 'none';
+  });
 }
 
 (async () => {

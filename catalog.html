@@ -46,7 +46,21 @@
 
       <div class="section-head">
         <div class="section-title">All Courses</div>
-        <span id="course-count" style="font-size:13px;color:var(--text-muted)"></span>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <span id="course-count" style="font-size:13px;color:var(--text-muted)"></span>
+          <select class="mini-select" id="filter-status">
+            <option value="">All statuses</option>
+            <option value="not_enrolled">Not enrolled</option>
+            <option value="not_started">Not started</option>
+            <option value="in_progress">In progress</option>
+            <option value="completed">Completed</option>
+          </select>
+          <select class="mini-select" id="sort-by">
+            <option value="newest">Newest</option>
+            <option value="az">A–Z</option>
+            <option value="duration">Shortest</option>
+          </select>
+        </div>
       </div>
       <div id="courses-area"><div class="spinner"></div></div>
     </div>
@@ -75,11 +89,19 @@ let allCourses = [], myEnrollments = [], currentUser = null, currentTag = '';
     Enrollments.getMine(currentUser.id),
   ]);
 
+  // Deep-link params: ?q=search  ?tag=Category
+  const urlParams = new URLSearchParams(location.search);
+  const urlQ   = urlParams.get('q')   || '';
+  const urlTag = urlParams.get('tag') || '';
+  if (urlQ) document.getElementById('search').value = urlQ;
+
   // Build category chips from tags
   const tags = [...new Set(allCourses.flatMap(c => c.tags || []))].sort();
+  const startTag = tags.includes(urlTag) ? urlTag : '';
+  currentTag = startTag;
   const row = document.getElementById('chip-row');
   row.innerHTML = [['', 'All'], ...tags.map(t => [t, t])]
-    .map(([val, label]) => `<button class="fchip${val === '' ? ' active' : ''}" data-tag="${val}">${label}</button>`)
+    .map(([val, label]) => `<button class="fchip${val === startTag ? ' active' : ''}" data-tag="${val}">${label}</button>`)
     .join('');
   row.querySelectorAll('.fchip').forEach(chip => {
     chip.onclick = () => {
@@ -92,6 +114,8 @@ let allCourses = [], myEnrollments = [], currentUser = null, currentTag = '';
 
   renderAll();
   document.getElementById('search').oninput = renderAll;
+  document.getElementById('filter-status').onchange = renderAll;
+  document.getElementById('sort-by').onchange = renderAll;
 })();
 
 function getEnrollment(courseId) {
@@ -99,20 +123,33 @@ function getEnrollment(courseId) {
 }
 
 function renderAll() {
-  const q   = document.getElementById('search').value.toLowerCase();
-  const tag = currentTag;
+  const q      = document.getElementById('search').value.toLowerCase();
+  const tag    = currentTag;
+  const status = document.getElementById('filter-status').value;
+  const sort   = document.getElementById('sort-by').value;
 
-  const filtered = allCourses.filter(c => {
+  let filtered = allCourses.filter(c => {
     const matchQ   = !q   || c.title.toLowerCase().includes(q) || (c.description||'').toLowerCase().includes(q);
     const matchTag = !tag || (c.tags||[]).includes(tag);
-    return matchQ && matchTag;
+    let matchStatus = true;
+    if (status) {
+      const s = getEnrollment(c.id)?.status || 'not_enrolled';
+      matchStatus = s === status;
+    }
+    return matchQ && matchTag && matchStatus;
+  });
+
+  filtered = filtered.slice().sort((a, b) => {
+    if (sort === 'az')       return (a.title || '').localeCompare(b.title || '');
+    if (sort === 'duration') return (a.duration_minutes || 0) - (b.duration_minutes || 0);
+    return new Date(b.created_at || 0) - new Date(a.created_at || 0); // newest
   });
 
   document.getElementById('course-count').textContent = `${filtered.length} course${filtered.length !== 1 ? 's' : ''}`;
 
   const mandatory = filtered.filter(c => c.is_mandatory);
   const mandSec   = document.getElementById('mandatory-section');
-  if (mandatory.length && !q && !tag) {
+  if (mandatory.length && !q && !tag && !status) {
     mandSec.style.display = '';
     document.getElementById('mandatory-grid').innerHTML = mandatory.map(c => courseCard(c)).join('');
   } else {
