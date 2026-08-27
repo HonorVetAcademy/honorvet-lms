@@ -222,7 +222,7 @@ function courseCardHTML(course, opts = {}) {
     <div class="cc-thumb" style="background:${grad}">
       <span class="cc-wm">${icon}</span>
       <span class="cc-kind">${contentKind(course.content_type)}</span>
-      ${course.is_mandatory ? '<span class="cc-mand">Mandatory</span>' : ''}
+      ${course.is_mandatory ? '<span class="cc-mand">Mandatory</span>' : (opts.newBadge ? '<span class="cc-new">New</span>' : '')}
       ${dur ? `<span class="cc-dur">${clockIcon()} ${dur}</span>` : ''}
     </div>
     <div class="cc-body">
@@ -236,6 +236,26 @@ function courseCardHTML(course, opts = {}) {
       ${opts.actionHTML || ''}
     </div>
   </article>`;
+}
+
+// "Freshly Brewed" — newest courses added to the catalog (real created_at data)
+function freshlyBrewedHTML(courses, enrollments = [], limit = 4) {
+  const fresh = [...courses]
+    .filter(c => c.created_at)
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+    .slice(0, limit);
+  if (!fresh.length) return '';
+
+  return `<div class="course-grid">${fresh.map(c => {
+    const enr    = enrollments.find(e => e.course_id === c.id);
+    const status = enr?.status || 'not_enrolled';
+    const label  = status === 'completed' ? 'Review' : status === 'in_progress' ? 'Continue' : status === 'not_started' ? 'Start' : 'View course';
+    const cls    = status === 'not_enrolled' ? 'btn-secondary' : 'btn-primary';
+    return courseCardHTML(c, {
+      enrollment: enr, status, newBadge: true,
+      actionHTML: `<a href="course.html?id=${c.id}" class="btn ${cls} btn-sm">${label}</a>`,
+    });
+  }).join('')}</div>`;
 }
 
 // SVG progress ring (used by the dashboard "continue learning" hero)

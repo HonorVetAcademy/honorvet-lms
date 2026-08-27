@@ -332,6 +332,13 @@ img { max-width: 100%; }
   font-size: 9.5px; font-weight: 800; letter-spacing: .06em;
   padding: 4px 9px; border-radius: 20px; text-transform: uppercase;
 }
+.cc-new {
+  position: absolute; top: 11px; right: 11px; z-index: 2;
+  background: linear-gradient(135deg, var(--teal), #22C1B6); color: #fff;
+  font-size: 9.5px; font-weight: 800; letter-spacing: .06em;
+  padding: 4px 9px; border-radius: 20px; text-transform: uppercase;
+  box-shadow: 0 3px 10px rgba(10,138,130,.35);
+}
 .cc-dur {
   position: absolute; bottom: 11px; right: 11px; z-index: 2;
   background: rgba(0,0,0,.42); backdrop-filter: blur(4px);

@@ -51,6 +51,13 @@
       </div>
       <div id="cat-area"></div>
 
+      <!-- Freshly brewed content -->
+      <div class="section-head">
+        <div class="section-title">☕ Freshly Brewed</div>
+        <a href="catalog.html" class="btn btn-ghost btn-sm">See all →</a>
+      </div>
+      <div id="fresh-area"></div>
+
       <!-- Stats -->
       <div class="stats-grid" id="stats-grid">
         <div class="stat-card pop pop-blue"><div class="stat-icon">📚</div><div class="stat-label">Enrolled</div><div class="stat-value" id="stat-enrolled">—</div><div class="stat-sub">courses assigned</div></div>
@@ -143,6 +150,11 @@ document.getElementById('app-name').textContent    = APP_CONFIG.appName;
     categoryTilesHTML(courses) ||
     `<div class="card card-body" style="color:var(--ink-3);font-size:13px">No categories yet — add tags to your courses to group them here.</div>`;
 
+  // Freshly Brewed — newest courses (real created_at data)
+  document.getElementById('fresh-area').innerHTML =
+    freshlyBrewedHTML(courses, enrollments, 4) ||
+    `<div class="card card-body" style="color:var(--ink-3);font-size:13px">No courses yet.</div>`;
+
   // Side panels — real substitutes for the template's "Best Instructors"
   renderSidePanels(courses);
 
@@ -232,7 +244,7 @@ function courseCard(course, enrollment) {
   });
 }
 
-// Side panels: Top Categories + Recently Added (all real data)
+// Side panel: Top Categories (Recently Added now lives in the "Freshly Brewed" section above)
 function renderSidePanels(courses) {
   const el = document.getElementById('side-panels');
   if (!el) return;
@@ -250,22 +262,10 @@ function renderSidePanels(courses) {
       }).join('')
     : `<div style="padding:16px;color:var(--ink-3);font-size:13px">No categories yet.</div>`;
 
-  const recent = [...courses].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)).slice(0, 5);
-  const recRows = recent.length
-    ? recent.map(c => `<a class="prow" href="course.html?id=${c.id}">
-        <div class="ptile" style="background:${courseGradient(c)}">${c.icon || '📖'}</div>
-        <div class="pmain"><div class="pt">${c.title}</div><div class="ps">${(c.tags && c.tags[0]) || 'Training'}${c.duration_minutes ? ` · ${c.duration_minutes} min` : ''}</div></div>
-        <span class="ppill">Open</span></a>`).join('')
-    : `<div style="padding:16px;color:var(--ink-3);font-size:13px">No courses yet.</div>`;
-
   el.innerHTML = `
     <div class="panel">
       <div class="panel-head"><span class="panel-title">Top Categories</span></div>
       <div class="panel-list">${catRows}</div>
-    </div>
-    <div class="panel">
-      <div class="panel-head"><span class="panel-title">Recently Added</span><a href="catalog.html" class="btn btn-ghost btn-sm">All</a></div>
-      <div class="panel-list">${recRows}</div>
     </div>`;
 }
 
