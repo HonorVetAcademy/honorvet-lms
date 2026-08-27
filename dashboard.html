@@ -54,9 +54,9 @@
       <!-- Stats -->
       <div class="stats-grid" id="stats-grid">
         <div class="stat-card pop pop-blue"><div class="stat-icon">📚</div><div class="stat-label">Enrolled</div><div class="stat-value" id="stat-enrolled">—</div><div class="stat-sub">courses assigned</div></div>
-        <div class="stat-card"><div class="stat-icon" style="background:var(--success-bg);color:var(--success)">✅</div><div class="stat-label">Completed</div><div class="stat-value" id="stat-completed">—</div><div class="stat-sub">courses finished</div></div>
-        <div class="stat-card"><div class="stat-icon" style="background:var(--warning-bg);color:var(--warning)">⏳</div><div class="stat-label">In Progress</div><div class="stat-value" id="stat-inprogress">—</div><div class="stat-sub">currently active</div></div>
-        <div class="stat-card pop pop-green"><div class="stat-icon">🛡️</div><div class="stat-label">Compliance</div><div class="stat-value" id="stat-compliance">—</div><div class="stat-sub">mandatory completion</div></div>
+        <div class="stat-card pop pop-green"><div class="stat-icon">✅</div><div class="stat-label">Completed</div><div class="stat-value" id="stat-completed">—</div><div class="stat-sub">courses finished</div></div>
+        <div class="stat-card pop pop-amber"><div class="stat-icon">⏳</div><div class="stat-label">In Progress</div><div class="stat-value" id="stat-inprogress">—</div><div class="stat-sub">currently active</div></div>
+        <div class="stat-card pop pop-pink"><div class="stat-icon">🛡️</div><div class="stat-label">Compliance</div><div class="stat-value" id="stat-compliance">—</div><div class="stat-sub">mandatory completion</div></div>
       </div>
 
       <!-- Charts -->
@@ -81,10 +81,10 @@
           <a href="reports.html" class="btn btn-ghost btn-sm">Full reports →</a>
         </div>
         <div class="stats-grid" id="org-stats-grid">
-          <div class="stat-card"><div class="stat-label">Total Users</div><div class="stat-value" id="org-users">—</div></div>
-          <div class="stat-card"><div class="stat-label">Total Courses</div><div class="stat-value" id="org-courses">—</div></div>
-          <div class="stat-card"><div class="stat-label">Completions</div><div class="stat-value" id="org-completed">—</div></div>
-          <div class="stat-card"><div class="stat-label">Org Compliance</div><div class="stat-value" id="org-compliance">—</div></div>
+          <div class="stat-card pop pop-blue"><div class="stat-icon">👥</div><div class="stat-label">Total Users</div><div class="stat-value" id="org-users">—</div></div>
+          <div class="stat-card pop pop-amber"><div class="stat-icon">📚</div><div class="stat-label">Total Courses</div><div class="stat-value" id="org-courses">—</div></div>
+          <div class="stat-card pop pop-green"><div class="stat-icon">✅</div><div class="stat-label">Completions</div><div class="stat-value" id="org-completed">—</div></div>
+          <div class="stat-card pop pop-pink"><div class="stat-icon">🛡️</div><div class="stat-label">Org Compliance</div><div class="stat-value" id="org-compliance">—</div></div>
         </div>
       </div>
     </div>
@@ -244,7 +244,7 @@ function renderSidePanels(courses) {
     ? cats.map(([tag, n], i) => {
         const col = CAT_COLORS[i % CAT_COLORS.length];
         return `<a class="prow" href="catalog.html?tag=${encodeURIComponent(tag)}">
-          <div class="ptile" style="background:${col.c}">${catIcon(tag)}</div>
+          <div class="ptile" style="background:${col.g}">${catIcon(tag)}</div>
           <div class="pmain"><div class="pt">${tag}</div><div class="ps">${n} course${n !== 1 ? 's' : ''}</div></div>
           <span class="ppill">View</span></a>`;
       }).join('')

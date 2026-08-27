@@ -102,11 +102,14 @@ function goTopSearch(e) {
   return false;
 }
 
-// Category colour palette + keyword icon for tiles
+// Category colour palette (solid + gradient) for tiles and icon badges
 const CAT_COLORS = [
-  { c: '#0056D2', b: '#EBF3FF' }, { c: '#7A4BC9', b: '#F2ECFC' },
-  { c: '#0A7C4E', b: '#E6F7F0' }, { c: '#C8102E', b: '#FDECEF' },
-  { c: '#A05C00', b: '#FBF1E1' }, { c: '#0A6C8A', b: '#E4F5FA' },
+  { c: '#0056D2', g: 'linear-gradient(135deg,#0056D2,#3B8EF3)' },
+  { c: '#0A8A82', g: 'linear-gradient(135deg,#0A8A82,#22C1B6)' },
+  { c: '#7A4BC9', g: 'linear-gradient(135deg,#7A4BC9,#A17EE0)' },
+  { c: '#C8102E', g: 'linear-gradient(135deg,#C8102E,#E8506E)' },
+  { c: '#C9820A', g: 'linear-gradient(135deg,#C9820A,#F0AC3C)' },
+  { c: '#3B5BA9', g: 'linear-gradient(135deg,#3B5BA9,#6B8CD4)' },
 ];
 function catIcon(tag) {
   const t = (tag || '').toLowerCase();
@@ -128,8 +131,8 @@ function categoryTilesHTML(courses, limit = 6) {
   if (!cats.length) return '';
   return `<div class="cat-tiles">` + cats.map(([tag, n], i) => {
     const col = CAT_COLORS[i % CAT_COLORS.length];
-    return `<a class="cat-tile" href="catalog.html?tag=${encodeURIComponent(tag)}" style="background:${col.b}">
-      <div class="cat-ico" style="background:${col.c}">${catIcon(tag)}</div>
+    return `<a class="cat-tile" href="catalog.html?tag=${encodeURIComponent(tag)}">
+      <div class="cat-ico" style="background:${col.g}">${catIcon(tag)}</div>
       <div class="cat-name">${tag}</div>
       <div class="cat-count" style="color:${col.c}">${n} course${n !== 1 ? 's' : ''}</div>
     </a>`;
@@ -243,7 +246,7 @@ function progressRing(pct, size = 132, stroke = 12) {
   const cx = size / 2;
   return `<div class="ring" style="width:${size}px;height:${size}px">
     <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
-      <defs><linearGradient id="ringgrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3B8EF3"/><stop offset="1" stop-color="#7FB0FF"/></linearGradient></defs>
+      <defs><linearGradient id="ringgrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4FD1C5"/><stop offset="1" stop-color="#8FE0D6"/></linearGradient></defs>
       <circle class="ring-bg" cx="${cx}" cy="${cx}" r="${r}" fill="none" stroke-width="${stroke}"/>
       <circle class="ring-fg" cx="${cx}" cy="${cx}" r="${r}" fill="none" stroke-width="${stroke}" stroke-linecap="round" stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}"/>
     </svg>
