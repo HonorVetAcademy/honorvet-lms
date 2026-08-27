@@ -345,7 +345,16 @@ async function importUsers() {
     const result = await res.json();
     if (!res.ok) throw new Error(result.error || 'Import failed');
 
-    let msg = `<div class="alert alert-success">✓ ${result.success} users imported successfully.</div>`;
+    let msg = `<div class="alert alert-success">✓ ${result.created} new user${result.created !== 1 ? 's' : ''} created` +
+      (result.updated ? ` · ${result.updated} existing user${result.updated !== 1 ? 's' : ''} updated` : '') +
+      `.</div>`;
+    if (result.updatedEmails?.length) {
+      const shown = result.updatedEmails.slice(0, 20);
+      const extra = result.updatedEmails.length - shown.length;
+      msg += `<div class="alert alert-info" style="margin-top:8px">
+        Already existed (profile refreshed with this import's name/role/department): ${shown.join(', ')}${extra > 0 ? ` +${extra} more` : ''}
+      </div>`;
+    }
     if (result.failed?.length) {
       msg += `<div class="alert alert-error" style="margin-top:8px">
         Failed (${result.failed.length}): ${result.failed.map(f => `${f.email} — ${f.reason}`).join('<br>')}

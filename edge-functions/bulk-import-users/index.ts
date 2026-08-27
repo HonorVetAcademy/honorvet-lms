@@ -26,7 +26,8 @@ serve(async (req: Request) => {
       { auth: { autoRefreshToken: false, persistSession: false } }
     )
 
-    const success: string[] = []
+    const created: string[] = []
+    const updated: string[] = []
     const failed: { email: string; reason: string }[] = []
 
     // Fetch all existing users once to avoid 130 separate list calls
@@ -68,14 +69,20 @@ serve(async (req: Request) => {
         }, { onConflict: 'email' })
 
         if (upsertErr) throw upsertErr
-        success.push(email)
+        if (alreadyExists) updated.push(email)
+        else created.push(email)
       } catch (e: any) {
         failed.push({ email, reason: e.message })
       }
     }
 
     return new Response(
-      JSON.stringify({ success: success.length, failed }),
+      JSON.stringify({
+        created: created.length,
+        updated: updated.length,
+        updatedEmails: updated,
+        failed,
+      }),
       { status: 200, headers: { ...CORS, 'Content-Type': 'application/json' } }
     )
   } catch (err) {
