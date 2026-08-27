@@ -1,4 +1,4 @@
--- HonorVet LMS - Supabase setup
+-- HonorVet Academy - Supabase setup
 -- Run this entire file in SQL Editor > New query > Run
 
 -- Users table

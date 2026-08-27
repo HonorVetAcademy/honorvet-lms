@@ -8,7 +8,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-const FROM_ADDRESS = 'HonorVet LMS <onboarding@resend.dev>'
+const FROM_ADDRESS = 'HonorVet Academy <onboarding@resend.dev>'
 // Once honorvettech.com is verified in Resend DNS:
 // const FROM_ADDRESS = 'HonorVet Learning <noreply@honorvettech.com>'
 
@@ -131,7 +131,7 @@ function buildEmail(type: string, firstName: string, courseTitle: string, course
 
     default:
       return {
-        subject: body || 'Notification from HonorVet LMS',
+        subject: body || 'Notification from HonorVet Academy',
         html: template({
           headerColor: '#374151',
           accentColor: '#dc2626',

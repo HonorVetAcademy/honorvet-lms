@@ -8,7 +8,7 @@ const SUPABASE_ANON = 'sb_publishable_5HdLjHI_1J-xN9uqiERgTg_KPyT-Jan';
 // ── App configuration ─────────────────────────────────────────
 const APP_CONFIG = {
   orgName:    'HonorVet Technologies',
-  appName:    'HonorVet LMS',
+  appName:    'HonorVet Academy',
   // GitHub org/user whose repos can be used as course content
   githubOrg:  'honorvet',
 };

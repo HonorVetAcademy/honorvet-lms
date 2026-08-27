@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Manage Courses — HonorVet LMS</title>
+  <title>Manage Courses — HonorVet Academy</title>
   <link rel="stylesheet" href="css/style.css">
   <link rel="icon" type="image/png" href="assets/logo-icon.png">
 </head>
@@ -13,7 +13,7 @@
     <div class="sidebar-logo">
       <img class="logo-mark" src="assets/logo-icon.png" alt="HonorVet Technologies">
       <div class="logo-text-wrap">
-        <div class="logo-text" id="app-name">HonorVet LMS</div>
+        <div class="logo-text" id="app-name">HonorVet Academy</div>
         <div class="logo-sub">Learning Platform</div>
       </div>
     </div>
@@ -89,6 +89,12 @@
         <div class="form-group">
           <label class="form-label">Icon (emoji)</label>
           <input class="form-input" id="f-icon" placeholder="e.g. 🦺" maxlength="4">
+        </div>
+        <div class="form-group" style="grid-column:1/-1;display:none" id="github-repo-group">
+          <label class="form-label">Select from GitHub <span style="font-weight:400;color:var(--text-muted)">(honorvet org, public repos)</span></label>
+          <select class="form-select" id="f-github-repo" onchange="onGithubRepoPick()">
+            <option value="">Loading repositories…</option>
+          </select>
         </div>
         <div class="form-group" style="grid-column:1/-1">
           <label class="form-label">Content URL *</label>
@@ -379,7 +385,7 @@ function typeLabel(t) {
 function escQ(s) { return (s||'').replace(/'/g,"\\'"); }
 
 const TYPE_HINTS = {
-  markdown: 'GitHub repo URL — e.g. https://github.com/honorvet/safety-training',
+  markdown: 'Pick a repo above, or paste any GitHub repo URL — e.g. https://github.com/honorvet/safety-training',
   youtube:  'YouTube video URL — e.g. https://youtube.com/watch?v=xxxxx',
   pdf:      'Direct PDF URL or Google Drive / SharePoint shareable link',
   link:     'Any URL — the course will open in a new tab',
@@ -389,8 +395,44 @@ function updateTypeHint() {
   document.getElementById('url-hint').textContent = TYPE_HINTS[t] || '';
   const placeholders = { markdown:'https://github.com/org/repo-name', youtube:'https://www.youtube.com/watch?v=...', pdf:'https://...', link:'https://...' };
   document.getElementById('f-url').placeholder = placeholders[t] || 'https://...';
+  document.getElementById('github-repo-group').style.display = t === 'markdown' ? '' : 'none';
+  if (t === 'markdown') loadGithubRepos();
 }
 updateTypeHint();
+
+// ── GitHub repo picker (public repos only, no auth needed) ──────
+let githubReposCache = null;
+
+async function loadGithubRepos() {
+  const sel = document.getElementById('f-github-repo');
+  if (githubReposCache) { renderGithubRepoOptions(githubReposCache); return; }
+  sel.innerHTML = '<option value="">Loading repositories…</option>';
+  try {
+    const res = await fetch(`https://api.github.com/orgs/${APP_CONFIG.githubOrg}/repos?per_page=100&sort=updated`);
+    if (!res.ok) throw new Error('GitHub API error');
+    const repos = await res.json();
+    githubReposCache = repos;
+    renderGithubRepoOptions(repos);
+  } catch (e) {
+    githubReposCache = [];
+    sel.innerHTML = '<option value="">Could not load repos — type the URL manually below</option>';
+  }
+}
+
+function renderGithubRepoOptions(repos) {
+  const sel = document.getElementById('f-github-repo');
+  if (!repos.length) {
+    sel.innerHTML = '<option value="">No public repos found — type the URL manually below</option>';
+    return;
+  }
+  sel.innerHTML = '<option value="">— Choose a repository —</option>' +
+    repos.map(r => `<option value="${r.html_url}">${r.name}${r.description ? ' — ' + escHtml(r.description) : ''}</option>`).join('');
+}
+
+function onGithubRepoPick() {
+  const url = document.getElementById('f-github-repo').value;
+  if (url) document.getElementById('f-url').value = url;
+}
 
 function openAddModal() {
   document.getElementById('modal-title').textContent = 'Add Course';

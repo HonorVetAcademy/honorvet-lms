@@ -1,4 +1,4 @@
-# HonorVet LMS
+# HonorVet Academy
 
 A lightweight Learning Management System built with pure HTML, CSS, and JavaScript. No build step. Hosted free on GitHub Pages. Data stored in Supabase (free tier).
 
@@ -36,7 +36,7 @@ const SUPABASE_ANON = 'eyJhbGci...';                 // ← your anon public key
 cd honorvet-lms
 git init
 git add .
-git commit -m "Initial commit: HonorVet LMS"
+git commit -m "Initial commit: HonorVet Academy"
 git branch -M main
 git remote add origin https://github.com/<your-org>/honorvet-lms.git
 git push -u origin main
