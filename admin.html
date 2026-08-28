@@ -418,9 +418,11 @@ async function runAIAutofill() {
   const btn = document.getElementById('ai-autofill-btn');
   btn.disabled = true; btn.textContent = 'Thinking…';
   try {
+    const session = await sb().auth.getSession();
+    const token   = session?.data?.session?.access_token;
     const res = await fetch(`${SUPABASE_URL}/functions/v1/ai-course-autofill`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_ANON}` },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token || SUPABASE_ANON}` },
       body: JSON.stringify({ title }),
     });
     const data = await res.json();

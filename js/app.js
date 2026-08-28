@@ -573,9 +573,11 @@ async function submitAIChat(e) {
   renderAIChatMessages();
 
   try {
+    const session = await sb().auth.getSession();
+    const token   = session?.data?.session?.access_token;
     const res = await fetch(`${SUPABASE_URL}/functions/v1/ai-chat`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_ANON}` },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token || SUPABASE_ANON}` },
       body: JSON.stringify({
         question,
         history: _aiChatHistory.slice(0, -1),
