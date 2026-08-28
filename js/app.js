@@ -183,24 +183,32 @@ const COURSE_GRADIENTS = [
   ['#0A4A4E', '#12A89B'], ['#3A1F5A', '#7A4BC9'],
 ];
 
+// Simple deterministic string hash — same input always gives the same
+// number, so a course keeps a stable pick across repeat visits.
+function hashStr(str) {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) >>> 0;
+  return h;
+}
+
 // Deterministic gradient so each course keeps a stable colour
 function courseGradient(course) {
   const key = (course.tags && course.tags[0]) || course.id || course.title || '';
-  let h = 0;
-  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
-  const [a, b] = COURSE_GRADIENTS[h % COURSE_GRADIENTS.length];
+  const [a, b] = COURSE_GRADIENTS[hashStr(key) % COURSE_GRADIENTS.length];
   return `linear-gradient(135deg, ${a}, ${b})`;
 }
 
 // Real, relevant cover photos for known tracks (Unsplash, free-to-use license).
-// A course qualifies if any of its tags matches a key below.
+// A course qualifies if any of its tags matches a key below. Each track lists
+// its candidate photos — resolveCoverImage() picks the first one not already
+// showing on another course in the same page load.
 const TRACK_COVER_IMAGES = {
-  'US Healthcare Fresher':               'https://images.unsplash.com/photo-1504813184591-01572f98c85f?w=900&h=500&fit=crop&auto=format&q=80',
-  'US Healthcare Physicians & Locums':   'https://images.unsplash.com/photo-1631217868264-e5b90bb7e133?w=900&h=500&fit=crop&auto=format&q=80',
-  'US Healthcare VMSs':                  'https://images.unsplash.com/photo-1635350736475-c8cef4b21906?w=900&h=500&fit=crop&auto=format&q=80',
-  'US Healthcare Refresher':             'https://images.unsplash.com/photo-1516841273335-e39b37888115?w=900&h=500&fit=crop&auto=format&q=80',
-  'US IT Fresher':                       'https://images.unsplash.com/photo-1629904853893-c2c8981a1dc5?w=900&h=500&fit=crop&auto=format&q=80',
-  'US IT Refresher':                     'https://images.unsplash.com/photo-1531482615713-2afd69097998?w=900&h=500&fit=crop&auto=format&q=80',
+  'US Healthcare Fresher':               ['https://images.unsplash.com/photo-1504813184591-01572f98c85f?w=900&h=500&fit=crop&auto=format&q=80'],
+  'US Healthcare Physicians & Locums':   ['https://images.unsplash.com/photo-1631217868264-e5b90bb7e133?w=900&h=500&fit=crop&auto=format&q=80'],
+  'US Healthcare VMSs':                  ['https://images.unsplash.com/photo-1635350736475-c8cef4b21906?w=900&h=500&fit=crop&auto=format&q=80'],
+  'US Healthcare Refresher':             ['https://images.unsplash.com/photo-1516841273335-e39b37888115?w=900&h=500&fit=crop&auto=format&q=80'],
+  'US IT Fresher':                       ['https://images.unsplash.com/photo-1629904853893-c2c8981a1dc5?w=900&h=500&fit=crop&auto=format&q=80'],
+  'US IT Refresher':                     ['https://images.unsplash.com/photo-1531482615713-2afd69097998?w=900&h=500&fit=crop&auto=format&q=80'],
 };
 
 // Broader topical matching: scans the course title/description/tags for
@@ -208,33 +216,59 @@ const TRACK_COVER_IMAGES = {
 // order — more specific subjects first, generic ones (refresher/onboarding)
 // last so they don't shadow a more specific match earlier in the list.
 const KEYWORD_COVER_IMAGES = [
-  { keywords: ['nurse', 'nursing'],                                                image: 'https://images.unsplash.com/photo-1758575514475-2a84975db58e?w=900&h=500&fit=crop&auto=format&q=80' },
-  { keywords: ['physician', 'locum', 'doctor'],                                    image: 'https://images.unsplash.com/photo-1631217868264-e5b90bb7e133?w=900&h=500&fit=crop&auto=format&q=80' },
-  { keywords: ['cybersecurity', 'cyber security', 'phishing', 'password security'], image: 'https://images.unsplash.com/photo-1614064641938-3bbee52942c7?w=900&h=500&fit=crop&auto=format&q=80' },
-  { keywords: ['safety', 'osha', 'hazard'],                                        image: 'https://images.unsplash.com/photo-1760963301666-582b92218a19?w=900&h=500&fit=crop&auto=format&q=80' },
-  { keywords: ['leadership', 'management', 'manager', 'supervisor'],               image: 'https://images.unsplash.com/photo-1542744173-8e7e53415bb0?w=900&h=500&fit=crop&auto=format&q=80' },
-  { keywords: ['cloud', 'azure', 'aws', 'data', 'analytics', 'power bi'],          image: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=900&h=500&fit=crop&auto=format&q=80' },
-  { keywords: ['vms', 'vendor management', 'staffing', 'hiring', 'recruit'],       image: 'https://images.unsplash.com/photo-1635350736475-c8cef4b21906?w=900&h=500&fit=crop&auto=format&q=80' },
-  { keywords: ['software', 'developer', 'programming', 'coding', 'information technology'], image: 'https://images.unsplash.com/photo-1629904853893-c2c8981a1dc5?w=900&h=500&fit=crop&auto=format&q=80' },
-  { keywords: ['facility', 'facilities', 'hospital', 'clinic'],                    image: 'https://images.unsplash.com/photo-1587351021355-a479a299d2f9?w=900&h=500&fit=crop&auto=format&q=80' },
-  { keywords: ['contract', 'glossary', 'employment type', 'legal'],                image: 'https://images.unsplash.com/photo-1562564055-71e051d33c19?w=900&h=500&fit=crop&auto=format&q=80' },
-  { keywords: ['welcome', 'onboarding', 'orientation', 'about honorvet', 'about the company'], image: 'https://images.unsplash.com/photo-1549923746-c502d488b3ea?w=900&h=500&fit=crop&auto=format&q=80' },
-  { keywords: ['refresher', 'continuing education', 'renewal'],                    image: 'https://images.unsplash.com/photo-1516841273335-e39b37888115?w=900&h=500&fit=crop&auto=format&q=80' },
+  { keywords: ['nurse', 'nursing'], images: [
+      'https://images.unsplash.com/photo-1758575514475-2a84975db58e?w=900&h=500&fit=crop&auto=format&q=80',
+      'https://images.unsplash.com/photo-1758653500493-5c8f44ff3d10?w=900&h=500&fit=crop&auto=format&q=80',
+      'https://images.unsplash.com/photo-1631815590058-860e4f83c1e8?w=900&h=500&fit=crop&auto=format&q=80',
+  ]},
+  { keywords: ['physician', 'locum', 'doctor'],                                    images: ['https://images.unsplash.com/photo-1631217868264-e5b90bb7e133?w=900&h=500&fit=crop&auto=format&q=80'] },
+  { keywords: ['cybersecurity', 'cyber security', 'phishing', 'password security'], images: ['https://images.unsplash.com/photo-1614064641938-3bbee52942c7?w=900&h=500&fit=crop&auto=format&q=80'] },
+  { keywords: ['safety', 'osha', 'hazard'],                                        images: ['https://images.unsplash.com/photo-1760963301666-582b92218a19?w=900&h=500&fit=crop&auto=format&q=80'] },
+  { keywords: ['leadership', 'management', 'manager', 'supervisor'],               images: ['https://images.unsplash.com/photo-1542744173-8e7e53415bb0?w=900&h=500&fit=crop&auto=format&q=80'] },
+  { keywords: ['cloud', 'azure', 'aws', 'data', 'analytics', 'power bi'],          images: ['https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=900&h=500&fit=crop&auto=format&q=80'] },
+  { keywords: ['vms', 'vendor management', 'staffing', 'hiring', 'recruit'],       images: ['https://images.unsplash.com/photo-1635350736475-c8cef4b21906?w=900&h=500&fit=crop&auto=format&q=80'] },
+  { keywords: ['software', 'developer', 'programming', 'coding', 'information technology'], images: ['https://images.unsplash.com/photo-1629904853893-c2c8981a1dc5?w=900&h=500&fit=crop&auto=format&q=80'] },
+  { keywords: ['facility', 'facilities', 'hospital', 'clinic'],                    images: ['https://images.unsplash.com/photo-1587351021355-a479a299d2f9?w=900&h=500&fit=crop&auto=format&q=80'] },
+  { keywords: ['contract', 'glossary', 'employment type', 'legal'],                images: ['https://images.unsplash.com/photo-1562564055-71e051d33c19?w=900&h=500&fit=crop&auto=format&q=80'] },
+  { keywords: ['welcome', 'onboarding', 'orientation', 'about honorvet', 'about the company'], images: ['https://images.unsplash.com/photo-1549923746-c502d488b3ea?w=900&h=500&fit=crop&auto=format&q=80'] },
+  { keywords: ['refresher', 'continuing education', 'renewal'],                    images: ['https://images.unsplash.com/photo-1516841273335-e39b37888115?w=900&h=500&fit=crop&auto=format&q=80'] },
 ];
 
+// Tracks which cover photos are already showing on this page load so two
+// *different* courses never get the identical picture. Keyed separately by
+// course id so the same course rendered twice (e.g. it appears in both
+// "Freshly Brewed" and "My Courses") always gets back its own photo instead
+// of being told it's "taken" by itself.
+const usedCoverImages = new Set();
+const resolvedCoverById = new Map();
+function firstUnused(urls) {
+  return (urls || []).find(u => !usedCoverImages.has(u)) || null;
+}
+
 // Resolve a course's cover photo, most specific first:
-// 1) a manual per-course URL, 2) an exact track-tag match, 3) a keyword match
-// against the title/description/tags, 4) null (caller falls back to gradient+icon).
+// 1) a manual per-course URL (always honoured, even if reused elsewhere),
+// 2) an exact track-tag match, 3) a keyword match against the
+// title/description/tags, 4) null (caller falls back to gradient+icon)
+// if every relevant photo for this course is already in use on this page.
 function resolveCoverImage(course) {
-  if (course.cover_image_url) return course.cover_image_url;
+  if (course.id && resolvedCoverById.has(course.id)) return resolvedCoverById.get(course.id);
 
-  const tag = (course.tags || []).find(t => TRACK_COVER_IMAGES[t]);
-  if (tag) return TRACK_COVER_IMAGES[tag];
+  const result = (() => {
+    if (course.cover_image_url) return course.cover_image_url;
 
-  const haystack = [course.title, course.description, ...(course.tags || [])]
-    .filter(Boolean).join(' ').toLowerCase();
-  const hit = KEYWORD_COVER_IMAGES.find(entry => entry.keywords.some(k => haystack.includes(k)));
-  return hit ? hit.image : null;
+    const tag = (course.tags || []).find(t => TRACK_COVER_IMAGES[t]);
+    const trackPick = tag ? firstUnused(TRACK_COVER_IMAGES[tag]) : null;
+    if (trackPick) return trackPick;
+
+    const haystack = [course.title, course.description, ...(course.tags || [])]
+      .filter(Boolean).join(' ').toLowerCase();
+    const entry = KEYWORD_COVER_IMAGES.find(e => e.keywords.some(k => haystack.includes(k)));
+    return entry ? firstUnused(entry.images) : null;
+  })();
+
+  if (result) usedCoverImages.add(result);
+  if (course.id) resolvedCoverById.set(course.id, result);
+  return result;
 }
 
 // Human label for the content type (real field on the course)
