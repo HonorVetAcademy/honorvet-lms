@@ -192,6 +192,25 @@ function courseGradient(course) {
   return `linear-gradient(135deg, ${a}, ${b})`;
 }
 
+// Real, relevant cover photos for known tracks (Unsplash, free-to-use license).
+// A course qualifies if any of its tags matches a key below.
+const TRACK_COVER_IMAGES = {
+  'US Healthcare Fresher':               'https://images.unsplash.com/photo-1504813184591-01572f98c85f?w=900&h=500&fit=crop&auto=format&q=80',
+  'US Healthcare Physicians & Locums':   'https://images.unsplash.com/photo-1631217868264-e5b90bb7e133?w=900&h=500&fit=crop&auto=format&q=80',
+  'US Healthcare VMSs':                  'https://images.unsplash.com/photo-1635350736475-c8cef4b21906?w=900&h=500&fit=crop&auto=format&q=80',
+  'US Healthcare Refresher':             'https://images.unsplash.com/photo-1516841273335-e39b37888115?w=900&h=500&fit=crop&auto=format&q=80',
+  'US IT Fresher':                       'https://images.unsplash.com/photo-1629904853893-c2c8981a1dc5?w=900&h=500&fit=crop&auto=format&q=80',
+  'US IT Refresher':                     'https://images.unsplash.com/photo-1531482615713-2afd69097998?w=900&h=500&fit=crop&auto=format&q=80',
+};
+
+// Resolve a course's cover photo: per-course override wins, else the first
+// matching track default, else null (caller falls back to the gradient+icon).
+function resolveCoverImage(course) {
+  if (course.cover_image_url) return course.cover_image_url;
+  const tag = (course.tags || []).find(t => TRACK_COVER_IMAGES[t]);
+  return tag ? TRACK_COVER_IMAGES[tag] : null;
+}
+
 // Human label for the content type (real field on the course)
 function contentKind(t) {
   return { markdown: 'Reading', pdf: 'PDF', youtube: 'Video', video: 'Video', link: 'External' }[t] || 'Course';
@@ -207,7 +226,10 @@ function courseCardHTML(course, opts = {}) {
   const status = opts.status || enr?.status || 'not_enrolled';
   const icon   = course.icon || '📖';
   const cat    = (course.tags && course.tags[0]) || 'Training';
-  const grad   = courseGradient(course);
+  const cover  = resolveCoverImage(course);
+  const thumbStyle = cover
+    ? `background-image:url('${cover}');background-size:cover;background-position:center`
+    : `background:${courseGradient(course)}`;
   const dur    = course.duration_minutes ? `${course.duration_minutes} min` : '';
   const pct    = enr?.progress || 0;
 
@@ -219,8 +241,8 @@ function courseCardHTML(course, opts = {}) {
     : '';
 
   return `<article class="course-card">
-    <div class="cc-thumb" style="background:${grad}">
-      <span class="cc-wm">${icon}</span>
+    <div class="cc-thumb${cover ? ' has-photo' : ''}" style="${thumbStyle}">
+      ${cover ? '<div class="cc-shade"></div>' : `<span class="cc-wm">${icon}</span>`}
       <span class="cc-kind">${contentKind(course.content_type)}</span>
       ${course.is_mandatory ? '<span class="cc-mand">Mandatory</span>' : (opts.newBadge ? '<span class="cc-new">New</span>' : '')}
       ${dur ? `<span class="cc-dur">${clockIcon()} ${dur}</span>` : ''}

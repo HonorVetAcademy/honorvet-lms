@@ -139,7 +139,13 @@ let trackTimer = null, trackSeconds = 0, trackMinSeconds = 0, trackUnlocked = fa
   document.title = course.title + ' — HonorVet Academy';
   document.getElementById('course-title').textContent = course.title;
   document.getElementById('ch-cat').textContent = (course.tags && course.tags[0]) || 'Training';
-  document.getElementById('course-hero').style.background = courseGradient(course);
+  const heroCover = resolveCoverImage(course);
+  const heroEl = document.getElementById('course-hero');
+  if (heroCover) {
+    heroEl.style.background = `linear-gradient(rgba(11,31,58,.55), rgba(11,31,58,.55)), url('${heroCover}') center/cover`;
+  } else {
+    heroEl.style.background = courseGradient(course);
+  }
   document.getElementById('course-meta').innerHTML =
     `<span class="chm">${clockIcon()} ${course.duration_minutes || '?'} min</span>` +
     `<span class="chm">${course.icon || '📖'} ${contentTypeLabel(course.content_type)}</span>` +
