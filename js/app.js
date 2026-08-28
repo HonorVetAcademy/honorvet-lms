@@ -230,6 +230,7 @@ const KEYWORD_COVER_IMAGES = [
   { keywords: ['software', 'developer', 'programming', 'coding', 'information technology'], images: ['https://images.unsplash.com/photo-1629904853893-c2c8981a1dc5?w=900&h=500&fit=crop&auto=format&q=80'] },
   { keywords: ['facility', 'facilities', 'hospital', 'clinic'],                    images: ['https://images.unsplash.com/photo-1587351021355-a479a299d2f9?w=900&h=500&fit=crop&auto=format&q=80'] },
   { keywords: ['contract', 'glossary', 'employment type', 'legal'],                images: ['https://images.unsplash.com/photo-1562564055-71e051d33c19?w=900&h=500&fit=crop&auto=format&q=80'] },
+  { keywords: ['us culture', 'american culture', 'cultural'],                       images: ['https://images.unsplash.com/photo-1562884328-39da45501a9c?w=900&h=500&fit=crop&auto=format&q=80'] },
   { keywords: ['welcome', 'onboarding', 'orientation', 'about honorvet', 'about the company'], images: ['https://images.unsplash.com/photo-1549923746-c502d488b3ea?w=900&h=500&fit=crop&auto=format&q=80'] },
   { keywords: ['refresher', 'continuing education', 'renewal'],                    images: ['https://images.unsplash.com/photo-1516841273335-e39b37888115?w=900&h=500&fit=crop&auto=format&q=80'] },
 ];
