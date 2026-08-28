@@ -203,12 +203,38 @@ const TRACK_COVER_IMAGES = {
   'US IT Refresher':                     'https://images.unsplash.com/photo-1531482615713-2afd69097998?w=900&h=500&fit=crop&auto=format&q=80',
 };
 
-// Resolve a course's cover photo: per-course override wins, else the first
-// matching track default, else null (caller falls back to the gradient+icon).
+// Broader topical matching: scans the course title/description/tags for
+// keywords so a photo shows up even without an exact track tag. Checked in
+// order — more specific subjects first, generic ones (refresher/onboarding)
+// last so they don't shadow a more specific match earlier in the list.
+const KEYWORD_COVER_IMAGES = [
+  { keywords: ['nurse', 'nursing'],                                                image: 'https://images.unsplash.com/photo-1758575514475-2a84975db58e?w=900&h=500&fit=crop&auto=format&q=80' },
+  { keywords: ['physician', 'locum', 'doctor'],                                    image: 'https://images.unsplash.com/photo-1631217868264-e5b90bb7e133?w=900&h=500&fit=crop&auto=format&q=80' },
+  { keywords: ['cybersecurity', 'cyber security', 'phishing', 'password security'], image: 'https://images.unsplash.com/photo-1614064641938-3bbee52942c7?w=900&h=500&fit=crop&auto=format&q=80' },
+  { keywords: ['safety', 'osha', 'hazard'],                                        image: 'https://images.unsplash.com/photo-1760963301666-582b92218a19?w=900&h=500&fit=crop&auto=format&q=80' },
+  { keywords: ['leadership', 'management', 'manager', 'supervisor'],               image: 'https://images.unsplash.com/photo-1542744173-8e7e53415bb0?w=900&h=500&fit=crop&auto=format&q=80' },
+  { keywords: ['cloud', 'azure', 'aws', 'data', 'analytics', 'power bi'],          image: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=900&h=500&fit=crop&auto=format&q=80' },
+  { keywords: ['vms', 'vendor management', 'staffing', 'hiring', 'recruit'],       image: 'https://images.unsplash.com/photo-1635350736475-c8cef4b21906?w=900&h=500&fit=crop&auto=format&q=80' },
+  { keywords: ['software', 'developer', 'programming', 'coding', 'information technology'], image: 'https://images.unsplash.com/photo-1629904853893-c2c8981a1dc5?w=900&h=500&fit=crop&auto=format&q=80' },
+  { keywords: ['facility', 'facilities', 'hospital', 'clinic'],                    image: 'https://images.unsplash.com/photo-1587351021355-a479a299d2f9?w=900&h=500&fit=crop&auto=format&q=80' },
+  { keywords: ['contract', 'glossary', 'employment type', 'legal'],                image: 'https://images.unsplash.com/photo-1562564055-71e051d33c19?w=900&h=500&fit=crop&auto=format&q=80' },
+  { keywords: ['welcome', 'onboarding', 'orientation', 'about honorvet', 'about the company'], image: 'https://images.unsplash.com/photo-1549923746-c502d488b3ea?w=900&h=500&fit=crop&auto=format&q=80' },
+  { keywords: ['refresher', 'continuing education', 'renewal'],                    image: 'https://images.unsplash.com/photo-1516841273335-e39b37888115?w=900&h=500&fit=crop&auto=format&q=80' },
+];
+
+// Resolve a course's cover photo, most specific first:
+// 1) a manual per-course URL, 2) an exact track-tag match, 3) a keyword match
+// against the title/description/tags, 4) null (caller falls back to gradient+icon).
 function resolveCoverImage(course) {
   if (course.cover_image_url) return course.cover_image_url;
+
   const tag = (course.tags || []).find(t => TRACK_COVER_IMAGES[t]);
-  return tag ? TRACK_COVER_IMAGES[tag] : null;
+  if (tag) return TRACK_COVER_IMAGES[tag];
+
+  const haystack = [course.title, course.description, ...(course.tags || [])]
+    .filter(Boolean).join(' ').toLowerCase();
+  const hit = KEYWORD_COVER_IMAGES.find(entry => entry.keywords.some(k => haystack.includes(k)));
+  return hit ? hit.image : null;
 }
 
 // Human label for the content type (real field on the course)
