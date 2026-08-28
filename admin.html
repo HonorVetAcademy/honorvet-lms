@@ -431,8 +431,9 @@ async function runAIAutofill() {
     if (!document.getElementById('f-desc').value.trim()) document.getElementById('f-desc').value = data.description || '';
     if (!document.getElementById('f-tags').value.trim()) document.getElementById('f-tags').value = (data.tags || []).join(', ');
     if (!document.getElementById('f-duration').value) document.getElementById('f-duration').value = data.duration_minutes || '';
+    if (!document.getElementById('f-cover').value.trim() && data.cover_image_url) document.getElementById('f-cover').value = data.cover_image_url;
     document.getElementById('f-mandatory').checked = !!data.is_mandatory;
-    toast('AI suggestions filled in — review before saving.', 'success');
+    toast(data.cover_image_url ? 'AI suggestions + a unique cover photo filled in — review before saving.' : 'AI suggestions filled in — review before saving.', 'success');
   } catch (e) {
     alert.innerHTML = `<div class="alert alert-error">AI auto-fill failed: ${e.message}</div>`;
   }
