@@ -71,7 +71,11 @@
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
         <div class="form-group" style="grid-column:1/-1">
           <label class="form-label">Course title *</label>
-          <input class="form-input" id="f-title" placeholder="e.g. Workplace Safety Fundamentals">
+          <div style="display:flex;gap:8px">
+            <input class="form-input" id="f-title" placeholder="e.g. Workplace Safety Fundamentals" style="flex:1">
+            <button type="button" class="btn btn-secondary btn-sm" id="ai-autofill-btn" onclick="runAIAutofill()" style="white-space:nowrap">✨ Auto-fill with AI</button>
+          </div>
+          <div class="form-hint">Type a title, then click Auto-fill to have AI suggest a description, tags, duration, and whether it's mandatory.</div>
         </div>
         <div class="form-group" style="grid-column:1/-1">
           <label class="form-label">Description</label>
@@ -402,6 +406,35 @@ function updateTypeHint() {
   document.getElementById('f-url').placeholder = placeholders[t] || 'https://...';
   document.getElementById('github-repo-group').style.display = t === 'markdown' ? '' : 'none';
   if (t === 'markdown') loadGithubRepos();
+}
+
+// ── AI auto-fill (title -> description, tags, duration, mandatory) ──
+async function runAIAutofill() {
+  const title = document.getElementById('f-title').value.trim();
+  const alert = document.getElementById('modal-alert');
+  alert.innerHTML = '';
+  if (!title) { alert.innerHTML = '<div class="alert alert-error">Type a course title first.</div>'; return; }
+
+  const btn = document.getElementById('ai-autofill-btn');
+  btn.disabled = true; btn.textContent = 'Thinking…';
+  try {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/ai-course-autofill`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_ANON}` },
+      body: JSON.stringify({ title }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'AI request failed');
+
+    if (!document.getElementById('f-desc').value.trim()) document.getElementById('f-desc').value = data.description || '';
+    if (!document.getElementById('f-tags').value.trim()) document.getElementById('f-tags').value = (data.tags || []).join(', ');
+    if (!document.getElementById('f-duration').value) document.getElementById('f-duration').value = data.duration_minutes || '';
+    document.getElementById('f-mandatory').checked = !!data.is_mandatory;
+    toast('AI suggestions filled in — review before saving.', 'success');
+  } catch (e) {
+    alert.innerHTML = `<div class="alert alert-error">AI auto-fill failed: ${e.message}</div>`;
+  }
+  btn.disabled = false; btn.textContent = '✨ Auto-fill with AI';
 }
 updateTypeHint();
 

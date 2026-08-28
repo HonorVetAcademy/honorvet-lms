@@ -59,6 +59,14 @@
       </div>
       <div id="fresh-area"></div>
 
+      <!-- Recommended for you (rule-based, from real enrollment/tag data) -->
+      <div id="reco-section" style="display:none">
+        <div class="section-head">
+          <div class="section-title">🎯 Recommended for You</div>
+        </div>
+        <div id="reco-area"></div>
+      </div>
+
       <!-- Stats -->
       <div class="stats-grid" id="stats-grid">
         <div class="stat-card pop pop-blue"><div class="stat-icon">📚</div><div class="stat-label">Enrolled</div><div class="stat-value" id="stat-enrolled">—</div><div class="stat-sub">courses assigned</div></div>
@@ -116,6 +124,7 @@ document.getElementById('app-name').textContent    = APP_CONFIG.appName;
   renderNotifBell(user.id, 'notif-bell-wrap');
   renderUserChip(user);
   document.getElementById('top-search-wrap').innerHTML = topSearchHTML();
+  initAIChatWidget({ userName: user.name, userRole: user.role });
 
   // Load enrollments + courses in parallel
   const [enrollments, courses] = await Promise.all([
@@ -154,6 +163,13 @@ document.getElementById('app-name').textContent    = APP_CONFIG.appName;
   document.getElementById('fresh-area').innerHTML =
     freshlyBrewedHTML(courses, enrollments, 4) ||
     `<div class="card card-body" style="color:var(--ink-3);font-size:13px">No courses yet.</div>`;
+
+  // Recommended for you — rule-based on completed/in-progress course tags
+  const recoHTML = recommendationsHTML(courses, enrollments, 4);
+  if (recoHTML) {
+    document.getElementById('reco-section').style.display = '';
+    document.getElementById('reco-area').innerHTML = recoHTML;
+  }
 
   // Side panels — real substitutes for the template's "Best Instructors"
   renderSidePanels(courses);

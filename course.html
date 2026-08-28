@@ -138,6 +138,7 @@ let trackTimer = null, trackSeconds = 0, trackMinSeconds = 0, trackUnlocked = fa
 
   document.title = course.title + ' — HonorVet Academy';
   document.getElementById('course-title').textContent = course.title;
+  initAIChatWidget({ userName: currentUser.name, userRole: currentUser.role, courseTitle: course.title, courseDescription: course.description });
   document.getElementById('ch-cat').textContent = (course.tags && course.tags[0]) || 'Training';
   const heroCover = resolveCoverImage(course);
   const heroEl = document.getElementById('course-hero');

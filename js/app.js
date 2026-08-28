@@ -340,6 +340,39 @@ function freshlyBrewedHTML(courses, enrollments = [], limit = 4) {
   }).join('')}</div>`;
 }
 
+// "Recommended for you" — rule-based, no AI call needed (fast + free).
+// Scores not-yet-enrolled courses by how many tags they share with courses
+// this learner has completed or is actively taking; falls back to newest
+// courses if nothing scores above zero (e.g. a brand-new learner).
+function buildRecommendations(courses, enrollments, limit = 4) {
+  const enrolledIds = new Set(enrollments.map(e => e.course_id));
+  const engaged = enrollments.filter(e => e.status === 'completed' || e.status === 'in_progress');
+  const profileTags = {};
+  engaged.forEach(e => {
+    const c = courses.find(c => c.id === e.course_id);
+    (c?.tags || []).forEach(t => {
+      profileTags[t] = (profileTags[t] || 0) + (e.status === 'completed' ? 2 : 1);
+    });
+  });
+
+  const candidates = courses.filter(c => !enrolledIds.has(c.id));
+  const scored = candidates.map(c => {
+    const score = (c.tags || []).reduce((sum, t) => sum + (profileTags[t] || 0), 0);
+    return { course: c, score };
+  });
+
+  scored.sort((a, b) => b.score - a.score || new Date(b.course.created_at || 0) - new Date(a.course.created_at || 0));
+  return scored.slice(0, limit).map(s => s.course);
+}
+
+function recommendationsHTML(courses, enrollments, limit = 4) {
+  const picks = buildRecommendations(courses, enrollments, limit);
+  if (!picks.length) return '';
+  return `<div class="course-grid">${picks.map(c =>
+    courseCardHTML(c, { actionHTML: `<a href="course.html?id=${c.id}" class="btn btn-primary btn-sm">Start</a>` })
+  ).join('')}</div>`;
+}
+
 // SVG progress ring (used by the dashboard "continue learning" hero)
 function progressRing(pct, size = 132, stroke = 12) {
   const r = (size - stroke) / 2;
@@ -476,6 +509,88 @@ document.addEventListener('click', e => {
     panel.style.display = 'none';
   }
 });
+
+// ── AI Chat Assistant widget (floating button + panel) ──────────
+let _aiChatHistory = [];
+let _aiChatContext = {};
+let _aiChatBusy = false;
+
+function initAIChatWidget(context = {}) {
+  _aiChatContext = context;
+  if (document.getElementById('ai-chat-launcher')) return; // already mounted
+  const wrap = document.createElement('div');
+  wrap.innerHTML = `
+    <button id="ai-chat-launcher" class="ai-chat-launcher" onclick="toggleAIChat()" aria-label="Ask AI">
+      <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+    </button>
+    <div id="ai-chat-panel" class="ai-chat-panel" style="display:none">
+      <div class="ai-chat-head">
+        <div><div class="ai-chat-title">HonorVet Academy Assistant</div><div class="ai-chat-sub">Ask about courses or how to use the platform</div></div>
+        <button class="modal-close" onclick="toggleAIChat()">&times;</button>
+      </div>
+      <div id="ai-chat-messages" class="ai-chat-messages"></div>
+      <form class="ai-chat-input-row" onsubmit="return submitAIChat(event)">
+        <input class="form-input" id="ai-chat-input" placeholder="Type a question…" autocomplete="off">
+        <button class="btn btn-primary btn-sm" type="submit" id="ai-chat-send">Send</button>
+      </form>
+    </div>`;
+  document.body.appendChild(wrap);
+  renderAIChatMessages();
+}
+
+function toggleAIChat() {
+  const panel = document.getElementById('ai-chat-panel');
+  if (!panel) return;
+  const opening = panel.style.display === 'none';
+  panel.style.display = opening ? '' : 'none';
+  if (opening) document.getElementById('ai-chat-input')?.focus();
+}
+
+function renderAIChatMessages() {
+  const el = document.getElementById('ai-chat-messages');
+  if (!el) return;
+  if (!_aiChatHistory.length) {
+    el.innerHTML = `<div class="ai-chat-empty">👋 Hi! Ask me anything about your courses or the platform.</div>`;
+  } else {
+    el.innerHTML = _aiChatHistory.map(m =>
+      `<div class="ai-msg ai-msg-${m.role}">${escHtml(m.content)}</div>`
+    ).join('') + (_aiChatBusy ? `<div class="ai-msg ai-msg-assistant ai-msg-typing">…</div>` : '');
+  }
+  el.scrollTop = el.scrollHeight;
+}
+
+async function submitAIChat(e) {
+  e.preventDefault();
+  if (_aiChatBusy) return false;
+  const input = document.getElementById('ai-chat-input');
+  const question = input.value.trim();
+  if (!question) return false;
+  input.value = '';
+
+  _aiChatHistory.push({ role: 'user', content: question });
+  _aiChatBusy = true;
+  renderAIChatMessages();
+
+  try {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/ai-chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_ANON}` },
+      body: JSON.stringify({
+        question,
+        history: _aiChatHistory.slice(0, -1),
+        context: _aiChatContext,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'AI request failed');
+    _aiChatHistory.push({ role: 'assistant', content: data.answer });
+  } catch (err) {
+    _aiChatHistory.push({ role: 'assistant', content: `Sorry, I ran into an error: ${err.message}` });
+  }
+  _aiChatBusy = false;
+  renderAIChatMessages();
+  return false;
+}
 
 function iconHome()     { return `<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>`; }
 function iconCatalog()  { return `<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>`; }
