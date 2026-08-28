@@ -212,10 +212,14 @@ const TRACK_COVER_IMAGES = {
 };
 
 // Broader topical matching: scans the course title/description/tags for
-// keywords so a photo shows up even without an exact track tag. Checked in
-// order — more specific subjects first, generic ones (refresher/onboarding)
-// last so they don't shadow a more specific match earlier in the list.
-const KEYWORD_COVER_IMAGES = [
+// keywords so a photo shows up even without an exact track tag. SPECIFIC
+// entries are checked before track tags (a course titled "Types of
+// Facilities" should get the facility photo even if it's also tagged with a
+// broad track like "US Healthcare Fresher"). GENERIC entries are checked
+// only as a last resort, after track tags, so a word like "refresher" never
+// shadows a course's more precise track-specific photo (e.g. "US IT
+// Refresher" has its own distinct photo from the generic refresher one).
+const SPECIFIC_KEYWORD_COVER_IMAGES = [
   { keywords: ['nurse', 'nursing'], images: [
       'https://images.unsplash.com/photo-1758575514475-2a84975db58e?w=900&h=500&fit=crop&auto=format&q=80',
       'https://images.unsplash.com/photo-1758653500493-5c8f44ff3d10?w=900&h=500&fit=crop&auto=format&q=80',
@@ -226,14 +230,25 @@ const KEYWORD_COVER_IMAGES = [
   { keywords: ['safety', 'osha', 'hazard'],                                        images: ['https://images.unsplash.com/photo-1760963301666-582b92218a19?w=900&h=500&fit=crop&auto=format&q=80'] },
   { keywords: ['leadership', 'management', 'manager', 'supervisor'],               images: ['https://images.unsplash.com/photo-1542744173-8e7e53415bb0?w=900&h=500&fit=crop&auto=format&q=80'] },
   { keywords: ['cloud', 'azure', 'aws', 'data', 'analytics', 'power bi'],          images: ['https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=900&h=500&fit=crop&auto=format&q=80'] },
+  { keywords: ['resume', 'curriculum vitae', ' cv '],                              images: ['https://images.unsplash.com/photo-1698047681432-006d2449c631?w=900&h=500&fit=crop&auto=format&q=80'] },
+  { keywords: ['job description', 'job posting'],                                 images: ['https://images.unsplash.com/photo-1761558794306-466448dab4bc?w=900&h=500&fit=crop&auto=format&q=80'] },
+  { keywords: ['recruitment lifecycle', 'recruiter', 'sourcing'],                  images: ['https://images.unsplash.com/photo-1758518730162-09a142505bfd?w=900&h=500&fit=crop&auto=format&q=80'] },
   { keywords: ['vms', 'vendor management', 'staffing', 'hiring', 'recruit'],       images: ['https://images.unsplash.com/photo-1635350736475-c8cef4b21906?w=900&h=500&fit=crop&auto=format&q=80'] },
   { keywords: ['software', 'developer', 'programming', 'coding', 'information technology'], images: ['https://images.unsplash.com/photo-1629904853893-c2c8981a1dc5?w=900&h=500&fit=crop&auto=format&q=80'] },
   { keywords: ['facility', 'facilities', 'hospital', 'clinic'],                    images: ['https://images.unsplash.com/photo-1587351021355-a479a299d2f9?w=900&h=500&fit=crop&auto=format&q=80'] },
   { keywords: ['contract', 'glossary', 'employment type', 'legal'],                images: ['https://images.unsplash.com/photo-1562564055-71e051d33c19?w=900&h=500&fit=crop&auto=format&q=80'] },
-  { keywords: ['us culture', 'american culture', 'cultural'],                       images: ['https://images.unsplash.com/photo-1562884328-39da45501a9c?w=900&h=500&fit=crop&auto=format&q=80'] },
+  { keywords: ['us culture', 'american culture', 'cultural'],                      images: ['https://images.unsplash.com/photo-1562884328-39da45501a9c?w=900&h=500&fit=crop&auto=format&q=80'] },
+];
+
+const GENERIC_KEYWORD_COVER_IMAGES = [
   { keywords: ['welcome', 'onboarding', 'orientation', 'about honorvet', 'about the company'], images: ['https://images.unsplash.com/photo-1549923746-c502d488b3ea?w=900&h=500&fit=crop&auto=format&q=80'] },
   { keywords: ['refresher', 'continuing education', 'renewal'],                    images: ['https://images.unsplash.com/photo-1516841273335-e39b37888115?w=900&h=500&fit=crop&auto=format&q=80'] },
 ];
+
+function matchKeywordImage(list, haystack) {
+  const entry = list.find(e => e.keywords.some(k => haystack.includes(k)));
+  return entry ? firstUnused(entry.images) : null;
+}
 
 // Tracks which cover photos are already showing on this page load so two
 // *different* courses never get the identical picture. Keyed separately by
@@ -248,23 +263,28 @@ function firstUnused(urls) {
 
 // Resolve a course's cover photo, most specific first:
 // 1) a manual per-course URL (always honoured, even if reused elsewhere),
-// 2) an exact track-tag match, 3) a keyword match against the
-// title/description/tags, 4) null (caller falls back to gradient+icon)
-// if every relevant photo for this course is already in use on this page.
+// 2) a specific keyword match against the title/description/tags (e.g.
+//    "facility" beats a broad "US Healthcare Fresher" track tag),
+// 3) an exact track-tag match, 4) a generic keyword match (onboarding/
+//    refresher) as a last resort, 5) null (caller falls back to
+//    gradient+icon) if every relevant photo is already in use on this page.
 function resolveCoverImage(course) {
   if (course.id && resolvedCoverById.has(course.id)) return resolvedCoverById.get(course.id);
 
   const result = (() => {
     if (course.cover_image_url) return course.cover_image_url;
 
+    const haystack = [course.title, course.description, ...(course.tags || [])]
+      .filter(Boolean).join(' ').toLowerCase();
+
+    const specificPick = matchKeywordImage(SPECIFIC_KEYWORD_COVER_IMAGES, haystack);
+    if (specificPick) return specificPick;
+
     const tag = (course.tags || []).find(t => TRACK_COVER_IMAGES[t]);
     const trackPick = tag ? firstUnused(TRACK_COVER_IMAGES[tag]) : null;
     if (trackPick) return trackPick;
 
-    const haystack = [course.title, course.description, ...(course.tags || [])]
-      .filter(Boolean).join(' ').toLowerCase();
-    const entry = KEYWORD_COVER_IMAGES.find(e => e.keywords.some(k => haystack.includes(k)));
-    return entry ? firstUnused(entry.images) : null;
+    return matchKeywordImage(GENERIC_KEYWORD_COVER_IMAGES, haystack);
   })();
 
   if (result) usedCoverImages.add(result);
