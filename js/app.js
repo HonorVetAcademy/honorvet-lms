@@ -58,34 +58,30 @@ function renderNav(activePage, user) {
   if (!nav) return;
 
   const items = [
-    { href: 'dashboard.html', icon: iconHome(),    label: 'Dashboard',      page: 'dashboard', color: '#0056D2' },
-    { href: 'catalog.html',   icon: iconCatalog(), label: 'My Courses',     page: 'catalog',   color: '#7A4BC9' },
-    { href: 'paths.html',     icon: iconPath(),    label: 'Learning Paths', page: 'paths',     color: '#0A7C4E' },
+    { href: 'dashboard.html', icon: iconHome(),    label: 'Dashboard',      page: 'dashboard' },
+    { href: 'catalog.html',   icon: iconCatalog(), label: 'My Courses',     page: 'catalog'   },
+    { href: 'paths.html',     icon: iconPath(),    label: 'Learning Paths', page: 'paths'     },
   ];
 
   if (isAdmin || isManager) {
-    items.push({ href: 'reports.html', icon: iconChart(), label: 'Reports', page: 'reports', color: '#A05C00' });
+    items.push({ href: 'reports.html', icon: iconChart(), label: 'Reports', page: 'reports' });
   }
   if (isAdmin) {
     items.push(
-      { href: 'users.html',  icon: iconUsers(),    label: 'Users',          page: 'users', color: '#C8102E' },
-      { href: 'admin.html',  icon: iconSettings(), label: 'Manage Courses', page: 'admin', color: '#3B5BA9' }
+      { href: 'users.html',  icon: iconUsers(),    label: 'Users',          page: 'users' },
+      { href: 'admin.html',  icon: iconSettings(), label: 'Manage Courses', page: 'admin' }
     );
   }
 
   nav.innerHTML = items.map(i => {
     const active = activePage === i.page;
+    const iconColor = active ? '#EE1A0F' : '#808286';
+    const iconBg    = active ? 'transparent' : 'transparent';
     return `<a href="${i.href}" class="nav-item${active ? ' active' : ''}">
-      <span class="nav-ico" style="color:${i.color};background:${hexA(i.color, active ? .2 : .11)}">${i.icon}</span>
+      <span class="nav-ico" style="color:${iconColor};background:${iconBg}">${i.icon}</span>
       <span>${i.label}</span>
     </a>`;
   }).join('');
-}
-
-// hex → rgba with alpha (for soft coloured tiles)
-function hexA(hex, a) {
-  const n = parseInt(hex.slice(1), 16);
-  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
 }
 
 // Global topbar search — Enter navigates to the catalog with the query
@@ -102,14 +98,10 @@ function goTopSearch(e) {
   return false;
 }
 
-// Category colour palette (solid + gradient) for tiles and icon badges
+// Category colour palette: one quiet charcoal icon treatment + brand-red
+// count text, matching the approved premium direction (no rainbow variety).
 const CAT_COLORS = [
-  { c: '#0056D2', g: 'linear-gradient(135deg,#0056D2,#3B8EF3)' },
-  { c: '#0A8A82', g: 'linear-gradient(135deg,#0A8A82,#22C1B6)' },
-  { c: '#7A4BC9', g: 'linear-gradient(135deg,#7A4BC9,#A17EE0)' },
-  { c: '#C8102E', g: 'linear-gradient(135deg,#C8102E,#E8506E)' },
-  { c: '#C9820A', g: 'linear-gradient(135deg,#C9820A,#F0AC3C)' },
-  { c: '#3B5BA9', g: 'linear-gradient(135deg,#3B5BA9,#6B8CD4)' },
+  { c: '#EE1A0F', g: 'linear-gradient(135deg,#231F20,#3A3436)' },
 ];
 function catIcon(tag) {
   const t = (tag || '').toLowerCase();
@@ -177,10 +169,10 @@ function roleBadge(role) {
 }
 
 // ── Course card (shared premium card used by dashboard + catalog) ──
+// Charcoal-family fallback for courses with no matched cover photo — quiet
+// and consistent rather than the old per-course rainbow.
 const COURSE_GRADIENTS = [
-  ['#0B1F3A', '#0056D2'], ['#0056D2', '#3B8EF3'], ['#123C66', '#0A7C4E'],
-  ['#5A1020', '#C8102E'], ['#7A4B00', '#C9A227'], ['#1B3A63', '#3B5BA9'],
-  ['#0A4A4E', '#12A89B'], ['#3A1F5A', '#7A4BC9'],
+  ['#231F20', '#3A3436'], ['#332C2E', '#4A4345'], ['#231F20', '#5C5457'],
 ];
 
 // Simple deterministic string hash — same input always gives the same
@@ -402,7 +394,7 @@ function progressRing(pct, size = 132, stroke = 12) {
   const cx = size / 2;
   return `<div class="ring" style="width:${size}px;height:${size}px">
     <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
-      <defs><linearGradient id="ringgrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4FD1C5"/><stop offset="1" stop-color="#8FE0D6"/></linearGradient></defs>
+      <defs><linearGradient id="ringgrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#ffffff"/></linearGradient></defs>
       <circle class="ring-bg" cx="${cx}" cy="${cx}" r="${r}" fill="none" stroke-width="${stroke}"/>
       <circle class="ring-fg" cx="${cx}" cy="${cx}" r="${r}" fill="none" stroke-width="${stroke}" stroke-linecap="round" stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}"/>
     </svg>
