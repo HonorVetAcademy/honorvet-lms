@@ -53,6 +53,7 @@ serve(async (req: Request) => {
               name: user.name,
               role: user.role || 'employee',
               department: user.department || '',
+              must_change_password: true,
             },
           })
           if (error) throw error

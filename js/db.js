@@ -33,6 +33,15 @@ const Auth = {
   onAuthChange(cb) {
     return sb().auth.onAuthStateChange(cb);
   },
+  async sendPasswordReset(email) {
+    const redirectTo = new URL('change-password.html', window.location.href).toString();
+    const { error } = await sb().auth.resetPasswordForEmail(email, { redirectTo });
+    if (error) throw error;
+  },
+  async updatePassword(newPassword) {
+    const { error } = await sb().auth.updateUser({ password: newPassword });
+    if (error) throw error;
+  },
 };
 
 // ── Users ─────────────────────────────────────────────────────
@@ -74,6 +83,10 @@ const Users = {
       .single();
     if (error) throw error;
     return data;
+  },
+  async clearMustChangePassword(id) {
+    const { error } = await sb().from('users').update({ must_change_password: false }).eq('id', id);
+    if (error) throw error;
   },
   async importBulk(rows) {
     // rows: [{email, name, role, department}]

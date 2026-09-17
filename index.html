@@ -32,6 +32,9 @@
         <label class="form-label" for="password">Password</label>
         <input class="form-input" type="password" id="password" placeholder="••••••••" required autocomplete="current-password">
       </div>
+      <div style="text-align:right;margin:-8px 0 14px">
+        <a href="#" style="font-size:12.5px;color:var(--brand)" onclick="showForgotPassword();return false;">Forgot password?</a>
+      </div>
       <button type="submit" class="btn btn-primary btn-lg" style="width:100%;justify-content:center;" id="signin-btn">
         Sign in
       </button>
@@ -82,6 +85,28 @@
   </div>
 </div>
 
+<!-- Forgot password modal -->
+<div class="modal-overlay" id="forgot-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Reset your password</span>
+      <button class="modal-close" onclick="closeModal('forgot-modal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="forgot-alert"></div>
+      <p style="font-size:13px;color:var(--text-muted);margin:0 0 14px">Enter your account email and we'll send you a link to set a new password.</p>
+      <div class="form-group">
+        <label class="form-label">Email address</label>
+        <input class="form-input" type="email" id="forgot-email" placeholder="you@honorvet.com" required>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('forgot-modal')">Cancel</button>
+      <button class="btn btn-primary" id="forgot-btn" onclick="doForgotPassword()">Send reset link</button>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="js/config.js"></script>
 <script src="js/db.js"></script>
@@ -109,7 +134,8 @@ document.getElementById('login-form').onsubmit = async (e) => {
       document.getElementById('email').value.trim(),
       document.getElementById('password').value
     );
-    window.location.href = 'dashboard.html';
+    const profile = await Users.getCurrent();
+    window.location.href = profile?.must_change_password ? 'change-password.html' : 'dashboard.html';
   } catch (err) {
     alertArea.innerHTML = `<div class="alert alert-error">${err.message || 'Sign-in failed. Check your email and password.'}</div>`;
     btn.disabled = false;
@@ -119,6 +145,28 @@ document.getElementById('login-form').onsubmit = async (e) => {
 
 function showRegister() {
   document.getElementById('register-modal').classList.add('open');
+}
+
+function showForgotPassword() {
+  document.getElementById('forgot-alert').innerHTML = '';
+  document.getElementById('forgot-email').value = document.getElementById('email').value.trim();
+  openModal('forgot-modal');
+}
+
+async function doForgotPassword() {
+  const btn = document.getElementById('forgot-btn');
+  const alertArea = document.getElementById('forgot-alert');
+  const email = document.getElementById('forgot-email').value.trim();
+  if (!email) { alertArea.innerHTML = '<div class="alert alert-error">Enter your email address.</div>'; return; }
+  btn.disabled = true; btn.textContent = 'Sending…';
+  try {
+    await Auth.sendPasswordReset(email);
+    alertArea.innerHTML = '<div class="alert alert-success">If that email has an account, a reset link is on its way. Check your inbox.</div>';
+    btn.textContent = 'Sent ✓';
+  } catch (err) {
+    alertArea.innerHTML = `<div class="alert alert-error">${err.message}</div>`;
+    btn.disabled = false; btn.textContent = 'Send reset link';
+  }
 }
 
 async function doRegister() {

@@ -22,17 +22,22 @@ async function requireAuth() {
     window.location.href = 'index.html';
     return null;
   }
-  const user = await Users.getCurrent();
+  let user = await Users.getCurrent();
   if (!user) {
     // First login — provision user record from auth metadata
     const meta = session.user.user_metadata || {};
-    const provisioned = await Users.upsert(session.user.id, {
+    user = await Users.upsert(session.user.id, {
       email: session.user.email,
       name: meta.name || session.user.email.split('@')[0],
       role: meta.role || 'employee',
       department: meta.department || null,
+      must_change_password: !!meta.must_change_password,
     });
-    return provisioned;
+  }
+  // Bulk-imported accounts must set their own password before using the app.
+  if (user.must_change_password && !location.pathname.endsWith('change-password.html')) {
+    window.location.href = 'change-password.html';
+    return null;
   }
   return user;
 }
