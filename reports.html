@@ -80,7 +80,26 @@
 <script>
 document.getElementById('app-name').textContent = APP_CONFIG.appName;
 
-let allEnrollments = [], allUsers = [], allCourses = [];
+let allEnrollments = [], allUsers = [], allCourses = [], allQuizAttempts = [], quizSummaries = {};
+
+// Groups every quiz attempt by user, then reduces to each course's latest
+// attempt (highest attempt_number) so retries don't get double-counted.
+function buildQuizSummaries(attempts) {
+  const byUser = {};
+  attempts.forEach(a => { (byUser[a.user_id] = byUser[a.user_id] || []).push(a); });
+  const summaries = {};
+  for (const [uid, atts] of Object.entries(byUser)) {
+    const byCourse = {};
+    atts.forEach(a => {
+      if (!byCourse[a.course_id] || a.attempt_number > byCourse[a.course_id].attempt_number) byCourse[a.course_id] = a;
+    });
+    const latest = Object.values(byCourse);
+    const passed = latest.filter(a => a.passed).length;
+    const avg = latest.length ? Math.round(latest.reduce((s, a) => s + a.score, 0) / latest.length) : 0;
+    summaries[uid] = { taken: latest.length, passed, avg, byCourse };
+  }
+  return summaries;
+}
 
 function switchTab(btn) {
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -109,11 +128,13 @@ function filterReportRows() {
   renderNotifBell(user.id, 'notif-bell-wrap');
   renderUserChip(user);
 
-  [allEnrollments, allUsers, allCourses] = await Promise.all([
+  [allEnrollments, allUsers, allCourses, allQuizAttempts] = await Promise.all([
     Enrollments.getAll(),
     Users.getAll(),
     Courses.getAll(),
+    Quiz.getAllAttempts(),
   ]);
+  quizSummaries = buildQuizSummaries(allQuizAttempts);
 
   // Stats
   const completed    = allEnrollments.filter(e => e.status === 'completed').length;
@@ -136,7 +157,7 @@ function renderUserTable() {
   for (const e of allEnrollments) {
     if (!byUser[e.user_id]) {
       const u = allUsers.find(u => u.id === e.user_id) || e.users || {};
-      byUser[e.user_id] = { name: u.name||'—', email: u.email||'—', role: u.role||'—', dept: u.department||'—', total:0, done:0 };
+      byUser[e.user_id] = { id: e.user_id, name: u.name||'—', email: u.email||'—', role: u.role||'—', dept: u.department||'—', total:0, done:0 };
     }
     byUser[e.user_id].total++;
     if (e.status==='completed') byUser[e.user_id].done++;
@@ -148,21 +169,24 @@ function renderUserTable() {
     return;
   }
   document.getElementById('user-table-wrap').innerHTML = `<table>
-    <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Department</th><th>Progress</th><th>Completed</th></tr></thead>
+    <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Department</th><th>Assigned</th><th>Completed</th><th>Progress</th><th>Quiz Scores</th></tr></thead>
     <tbody>${rows.map(r => {
       const pct = r.total ? Math.round(r.done/r.total*100) : 0;
+      const qs  = quizSummaries[r.id];
       return `<tr>
         <td><strong>${r.name}</strong></td>
         <td style="color:var(--text-muted)">${r.email}</td>
         <td>${roleBadge(r.role)}</td>
         <td style="color:var(--text-muted)">${r.dept}</td>
+        <td style="color:var(--text-muted)">${r.total}</td>
+        <td style="color:var(--text-muted)">${r.done}</td>
         <td style="min-width:120px">
           <div style="display:flex;align-items:center;gap:8px">
             <div class="progress-bar" style="flex:1"><div class="progress-fill ${pct===100?'done':''}" style="width:${pct}%"></div></div>
             <span style="font-size:12px;color:var(--text-muted);white-space:nowrap">${pct}%</span>
           </div>
         </td>
-        <td style="color:var(--text-muted)">${r.done} / ${r.total}</td>
+        <td style="color:var(--text-muted);font-size:12.5px">${qs ? `${qs.passed}/${qs.taken} passed · avg ${qs.avg}%` : '—'}</td>
       </tr>`;
     }).join('')}</tbody>
   </table>`;
@@ -227,16 +251,20 @@ function exportCSV() {
   for (const e of allEnrollments) {
     const u = allUsers.find(u => u.id === e.user_id) || {};
     const c = allCourses.find(c => c.id === e.course_id) || {};
+    const latestAttempt = quizSummaries[e.user_id]?.byCourse?.[e.course_id];
     byUser[e.user_id + '_' + e.course_id] = {
       name: u.name||'', email: u.email||'', role: u.role||'', department: u.department||'',
       course: c.title||e.course_id, mandatory: c.is_mandatory ? 'Yes':'No',
       status: e.status, completedAt: e.completed_at||'',
+      quizScore: latestAttempt ? latestAttempt.score + '%' : '',
+      quizPassed: latestAttempt ? (latestAttempt.passed ? 'Yes' : 'No') : '',
+      quizAttempts: latestAttempt ? latestAttempt.attempt_number : '',
     };
   }
   const rows = Object.values(byUser);
-  const header = 'Name,Email,Role,Department,Course,Mandatory,Status,Completed At';
+  const header = 'Name,Email,Role,Department,Course,Mandatory,Status,Completed At,Quiz Score,Quiz Passed,Quiz Attempts';
   const csv = [header, ...rows.map(r =>
-    [r.name,r.email,r.role,r.department,r.course,r.mandatory,r.status,r.completedAt]
+    [r.name,r.email,r.role,r.department,r.course,r.mandatory,r.status,r.completedAt,r.quizScore,r.quizPassed,r.quizAttempts]
       .map(v => `"${String(v).replace(/"/g,'""')}"`)
       .join(',')
   )].join('\n');

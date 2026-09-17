@@ -286,11 +286,12 @@
 <div class="modal-overlay" id="quiz-modal">
   <div class="modal" style="max-width:640px">
     <div class="modal-header">
-      <span class="modal-title">Quiz — <span id="quiz-course-name"></span></span>
+      <span class="modal-title"><span id="quiz-modal-kind-label">Quiz</span> — <span id="quiz-course-name"></span></span>
       <button class="modal-close" onclick="closeModal('quiz-modal')">&times;</button>
     </div>
     <div class="modal-body">
-      <input type="hidden" id="quiz-course-id">
+      <input type="hidden" id="quiz-target-id">
+      <input type="hidden" id="quiz-kind">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px">
         <div class="form-group" style="margin-bottom:0">
           <label class="form-label">Passing score (%)</label>
@@ -443,7 +444,7 @@ function renderTable() {
       <td>${c.is_mandatory ? '<span class="badge badge-red">Yes</span>' : '<span class="badge badge-gray">No</span>'}</td>
       <td>
         <div style="display:flex;gap:6px">
-          <button class="btn btn-ghost btn-sm" onclick="openQuizModal('${c.id}','${escQ(c.title)}')">📝 Quiz</button>
+          <button class="btn btn-ghost btn-sm" onclick="openQuizModal('course','${c.id}','${escQ(c.title)}')">📝 Quiz</button>
           <button class="btn btn-ghost btn-sm" onclick="openAssignModal('${c.id}','${escQ(c.title)}')">Assign</button>
           <button class="btn btn-ghost btn-sm" onclick="openEditModal(${JSON.stringify(c).replace(/"/g,'&quot;')})">Edit</button>
           <a href="course.html?id=${c.id}" class="btn btn-ghost btn-sm" target="_blank">Preview</a>
@@ -701,6 +702,7 @@ function renderPathsTable() {
       <td style="font-size:12px;color:var(--text-muted)">${(p.target_depts||[]).join(', ')||'—'}</td>
       <td>
         <div style="display:flex;gap:6px">
+          <button class="btn btn-ghost btn-sm" onclick="openQuizModal('path','${p.id}','${escQ(p.title)}')">📝 Final Quiz</button>
           <button class="btn btn-ghost btn-sm" onclick="openPathAssignModal('${p.id}','${escQ(p.title)}')">Assign</button>
           <button class="btn btn-ghost btn-sm" onclick="openPathModal(${JSON.stringify(p).replace(/"/g,'&quot;')})">Edit</button>
           <button class="btn btn-ghost btn-sm" style="color:var(--danger)" onclick="deletePath('${p.id}','${escQ(p.title)}')">Delete</button>
@@ -849,14 +851,23 @@ async function doPathAssign() {
 // ── Quiz management ──────────────────────────────────────────────
 let quizQuestionsCache = [];
 
-async function openQuizModal(courseId, courseTitle) {
-  document.getElementById('quiz-course-id').value = courseId;
-  document.getElementById('quiz-course-name').textContent = courseTitle;
+let quizKind = 'course'; // 'course' | 'path' — which admin quiz modal is open
+function quizAPI() { return quizKind === 'path' ? PathQuiz : Quiz; }
+
+async function openQuizModal(kind, targetId, targetTitle) {
+  quizKind = kind;
+  document.getElementById('quiz-target-id').value = targetId;
+  document.getElementById('quiz-course-name').textContent = targetTitle;
+  document.getElementById('quiz-modal-kind-label').textContent = kind === 'path' ? 'Path Final Quiz' : 'Course Quiz';
+  document.getElementById('quiz-empty-hint').textContent = kind === 'path'
+    ? 'No questions yet — learners will not see a final quiz until you add at least one question. The path is still marked complete once all its courses are finished.'
+    : 'No questions yet — learners will use the old time-based completion until you add at least one question.';
   openModal('quiz-modal');
 
+  const api = quizAPI();
   const [settings, questions] = await Promise.all([
-    Quiz.getSettings(courseId),
-    Quiz.getQuestions(courseId),
+    api.getSettings(targetId),
+    api.getQuestions(targetId),
   ]);
   document.getElementById('quiz-passing-score').value = settings?.quiz_passing_score ?? 70;
   document.getElementById('quiz-max-attempts').value  = settings?.quiz_max_attempts ?? 3;
@@ -865,11 +876,11 @@ async function openQuizModal(courseId, courseTitle) {
 }
 
 async function saveQuizSettings() {
-  const courseId = document.getElementById('quiz-course-id').value;
+  const targetId = document.getElementById('quiz-target-id').value;
   const quiz_passing_score = parseInt(document.getElementById('quiz-passing-score').value) || 70;
   const quiz_max_attempts  = parseInt(document.getElementById('quiz-max-attempts').value) || 3;
   try {
-    await Quiz.updateSettings(courseId, { quiz_passing_score, quiz_max_attempts });
+    await quizAPI().updateSettings(targetId, { quiz_passing_score, quiz_max_attempts });
     toast('Quiz settings saved.', 'success');
   } catch (e) { toast(e.message, 'error'); }
 }
@@ -899,7 +910,7 @@ function renderQuizQuestionsList() {
 async function deleteQuestionRow(id) {
   if (!confirm('Delete this question?')) return;
   try {
-    await Quiz.deleteQuestion(id);
+    await quizAPI().deleteQuestion(id);
     quizQuestionsCache = quizQuestionsCache.filter(q => q.id !== id);
     renderQuizQuestionsList();
     toast('Question deleted.', 'success');
@@ -965,7 +976,7 @@ function addQuestionOption() {
 async function saveQuestion() {
   const alertEl = document.getElementById('question-modal-alert');
   alertEl.innerHTML = '';
-  const courseId = document.getElementById('quiz-course-id').value;
+  const targetId = document.getElementById('quiz-target-id').value;
   const id = document.getElementById('q-id').value || 'q-' + Date.now();
   const question_text = document.getElementById('q-text').value.trim();
   const type = document.getElementById('q-type').value;
@@ -991,12 +1002,14 @@ async function saveQuestion() {
   const btn = document.getElementById('question-save-btn');
   btn.disabled = true; btn.textContent = 'Saving…';
   try {
-    const saved = await Quiz.upsertQuestion({
-      id, course_id: courseId, question_text, type, options, correct_answers,
+    const payload = {
+      id, question_text, type, options, correct_answers,
       position: quizQuestionsCache.findIndex(q => q.id === id) >= 0
         ? quizQuestionsCache.find(q => q.id === id).position
         : quizQuestionsCache.length,
-    });
+    };
+    if (quizKind === 'path') payload.path_id = targetId; else payload.course_id = targetId;
+    const saved = await quizAPI().upsertQuestion(payload);
     const idx = quizQuestionsCache.findIndex(q => q.id === id);
     if (idx >= 0) quizQuestionsCache[idx] = saved; else quizQuestionsCache.push(saved);
     renderQuizQuestionsList();

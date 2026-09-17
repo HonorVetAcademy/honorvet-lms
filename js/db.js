@@ -312,6 +312,53 @@ const Quiz = {
     if (error) throw error;
     return data;
   },
+  // Admin/hr/manager only (per RLS) — every attempt by every user, for reporting.
+  async getAllAttempts() {
+    const { data, error } = await sb().from('quiz_attempts').select('*').order('attempt_number');
+    if (error) throw error;
+    return data || [];
+  },
+};
+
+// ── Path Quiz (one capstone assessment per learning path) ───────
+const PathQuiz = {
+  async getQuestions(pathId) {
+    const { data, error } = await sb().from('path_quiz_questions').select('*').eq('path_id', pathId).order('position');
+    if (error) throw error;
+    return data || [];
+  },
+  async upsertQuestion(question) {
+    const { data, error } = await sb().from('path_quiz_questions').upsert(question, { onConflict: 'id' }).select().single();
+    if (error) throw error;
+    return data;
+  },
+  async deleteQuestion(id) {
+    const { error } = await sb().from('path_quiz_questions').delete().eq('id', id);
+    if (error) throw error;
+  },
+  async getSettings(pathId) {
+    const { data, error } = await sb().from('learning_paths').select('quiz_passing_score, quiz_max_attempts').eq('id', pathId).single();
+    if (error) throw error;
+    return data;
+  },
+  async updateSettings(pathId, { quiz_passing_score, quiz_max_attempts }) {
+    const { error } = await sb().from('learning_paths').update({ quiz_passing_score, quiz_max_attempts }).eq('id', pathId);
+    if (error) throw error;
+  },
+  async getAttempts(userId, pathId) {
+    const { data, error } = await sb().from('path_quiz_attempts').select('*').eq('user_id', userId).eq('path_id', pathId).order('attempt_number');
+    if (error) throw error;
+    return data || [];
+  },
+  async recordAttempt(userId, pathId, attemptNumber, score, passed, answers) {
+    const { data, error } = await sb().from('path_quiz_attempts').insert({
+      id: 'pattempt-' + Date.now(),
+      user_id: userId, path_id: pathId,
+      attempt_number: attemptNumber, score, passed, answers,
+    }).select().single();
+    if (error) throw error;
+    return data;
+  },
 };
 
 // ── Learning Paths ─────────────────────────────────────────────
@@ -324,7 +371,28 @@ const LearningPaths = {
   async getMine(userId) {
     const { data, error } = await sb().from('path_enrollments').select('*, learning_paths(*, learning_path_courses(course_id, position))').eq('user_id', userId);
     if (error) throw error;
-    return (data || []).map(pe => ({ ...pe.learning_paths, assigned_at: pe.assigned_at }));
+    return (data || []).map(pe => ({
+      ...pe.learning_paths,
+      assigned_at: pe.assigned_at,
+      path_status: pe.status,
+      path_completed_at: pe.completed_at,
+    }));
+  },
+  async completePath(userId, pathId) {
+    const { data, error } = await sb().from('path_enrollments')
+      .update({ status: 'completed', completed_at: new Date().toISOString() })
+      .eq('user_id', userId).eq('path_id', pathId)
+      .select().single();
+    if (error) throw error;
+    try {
+      const paths = await LearningPaths.getAll();
+      const title = paths.find(p => p.id === pathId)?.title || pathId;
+      await Notifications.create(userId, 'path_completed',
+        `Learning path completed: ${title}`,
+        `You successfully completed the "${title}" learning path. Great work!`,
+        { path_id: pathId });
+    } catch (e) { console.warn('Notification error:', e.message); }
+    return data;
   },
   async upsert(path) {
     const { data, error } = await sb().from('learning_paths').upsert(path, { onConflict: 'id' }).select().single();

@@ -43,23 +43,25 @@
 <script>
 document.getElementById('app-name').textContent    = APP_CONFIG.appName;
 
+let currentUser = null, myPaths = [], allCourses = [], myEnrollments = [];
+let pathQuizData = {}; // pathId -> { questions, settings, attempts }
+
 (async () => {
   const user = await requireAuth();
   if (!user) return;
+  currentUser = user;
   renderNav('paths', user);
   renderUserChip(user);
   renderNotifBell(user.id, 'notif-bell-wrap');
 
-  const [myPaths, allCourses, myEnrollments] = await Promise.all([
+  [myPaths, allCourses, myEnrollments] = await Promise.all([
     LearningPaths.getMine(user.id),
     Courses.getAll(),
     Enrollments.getMine(user.id),
   ]);
 
-  const area = document.getElementById('paths-area');
-
   if (!myPaths.length) {
-    area.innerHTML = `<div class="empty-state">
+    document.getElementById('paths-area').innerHTML = `<div class="empty-state">
       <div class="empty-icon">🗂</div>
       <strong>No learning paths assigned yet</strong>
       <p>Your manager or admin will assign paths based on your role.</p>
@@ -67,7 +69,26 @@ document.getElementById('app-name').textContent    = APP_CONFIG.appName;
     return;
   }
 
-  area.innerHTML = myPaths.map(path => {
+  // Pre-fetch each path's final-quiz questions/settings/attempts before
+  // rendering, since course completion above may already unlock the quiz.
+  await Promise.all(myPaths.map(async path => {
+    const [questions, settings, attempts] = await Promise.all([
+      PathQuiz.getQuestions(path.id),
+      PathQuiz.getSettings(path.id),
+      PathQuiz.getAttempts(user.id, path.id),
+    ]);
+    pathQuizData[path.id] = { questions, settings, attempts };
+  }));
+
+  renderPathsArea();
+})();
+
+function statusLabel(s) {
+  return { completed: 'Completed', in_progress: 'In progress', not_started: 'Not started' }[s] || 'Not enrolled';
+}
+
+function renderPathsArea() {
+  document.getElementById('paths-area').innerHTML = myPaths.map(path => {
     const pathCourses = (path.learning_path_courses || [])
       .sort((a, b) => a.position - b.position)
       .map(pc => {
@@ -80,6 +101,8 @@ document.getElementById('app-name').textContent    = APP_CONFIG.appName;
     const done     = pathCourses.filter(c => c.enrollment?.status === 'completed').length;
     const pct      = total ? Math.round(done / total * 100) : 0;
     const statusColor = pct === 100 ? 'var(--success)' : pct > 0 ? 'var(--brand)' : 'var(--text-dim)';
+    const allCoursesDone = total > 0 && done === total;
+    const quizInfo = pathQuizData[path.id] || { questions: [], settings: {}, attempts: [] };
 
     return `<div class="card" style="margin-bottom:20px;overflow:hidden">
       <div style="padding:20px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
@@ -124,12 +147,110 @@ document.getElementById('app-name').textContent    = APP_CONFIG.appName;
             }).join('')
         }
       </div>
+      ${quizInfo.questions.length ? renderPathQuizSection(path, allCoursesDone, quizInfo) : ''}
     </div>`;
   }).join('');
-})();
+}
 
-function statusLabel(s) {
-  return { completed: 'Completed', in_progress: 'In progress', not_started: 'Not started' }[s] || 'Not enrolled';
+// The final-quiz section appended under a path's course list, if the path
+// has at least one quiz question set up by an admin.
+function renderPathQuizSection(path, allCoursesDone, quizInfo) {
+  const { settings, attempts } = quizInfo;
+  const passingScore = settings?.quiz_passing_score ?? 70;
+  const maxAttempts  = settings?.quiz_max_attempts ?? 3;
+
+  let body;
+  if (path.path_status === 'completed') {
+    body = `<div style="color:var(--success);font-weight:600;font-size:13.5px">✓ Final quiz passed — path completed${path.path_completed_at ? ' on ' + fmtDate(path.path_completed_at) : ''}.</div>`;
+  } else if (!allCoursesDone) {
+    body = `<div style="color:var(--text-dim);font-size:13px">🔒 Complete all courses above to unlock the final quiz.</div>`;
+  } else {
+    const remaining = maxAttempts - attempts.length;
+    if (remaining <= 0) {
+      body = `<div style="color:var(--danger);font-size:13px">You've used all ${maxAttempts} attempts on the final quiz. Contact your administrator to reset them.</div>`;
+    } else {
+      body = `
+        <div style="font-size:12.5px;color:var(--text-muted);margin-bottom:10px">
+          <b>${quizInfo.questions.length} question${quizInfo.questions.length !== 1 ? 's' : ''}</b> · Passing score <b>${passingScore}%</b> ·
+          Attempts remaining: <b>${remaining}/${maxAttempts}</b>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="startPathQuiz('${path.id}')">${attempts.length ? 'Retake Final Quiz' : 'Start Final Quiz'}</button>`;
+    }
+  }
+
+  return `<div style="padding:16px 24px;border-top:1px solid var(--border);background:var(--surface)">
+    <div style="font-size:13px;font-weight:700;margin-bottom:8px">🏁 Final Quiz</div>
+    ${body}
+    <div id="path-quiz-form-${path.id}" style="margin-top:14px"></div>
+  </div>`;
+}
+
+function startPathQuiz(pathId) {
+  const quizInfo = pathQuizData[pathId];
+  const path = myPaths.find(p => p.id === pathId);
+  const wrap = document.getElementById(`path-quiz-form-${pathId}`);
+  wrap.innerHTML = `
+    <form id="path-quiz-form-el-${pathId}" onsubmit="submitPathQuiz(event,'${pathId}')">
+      ${quizInfo.questions.map((q, qi) => `
+        <div style="margin-bottom:18px;padding-bottom:14px;${qi < quizInfo.questions.length - 1 ? 'border-bottom:1px solid var(--border-2)' : ''}">
+          <div style="font-size:13.5px;font-weight:600;margin-bottom:8px">${qi + 1}. ${escHtml(q.question_text)}</div>
+          ${q.options.map((opt, oi) => `
+            <label style="display:flex;align-items:center;gap:9px;padding:5px 2px;cursor:pointer;font-size:13px">
+              <input type="${q.type === 'multi' ? 'checkbox' : 'radio'}" name="pquiz-${pathId}-${qi}" value="${oi}">
+              ${escHtml(opt)}
+            </label>`).join('')}
+        </div>`).join('')}
+      <button type="submit" class="btn btn-primary btn-sm" style="width:100%;justify-content:center">Submit Final Quiz</button>
+    </form>
+    <div id="path-quiz-result-${pathId}" style="display:none;margin-top:14px"></div>`;
+  wrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+async function submitPathQuiz(e, pathId) {
+  e.preventDefault();
+  const submitBtn = e.target.querySelector('button[type="submit"]');
+  submitBtn.disabled = true; submitBtn.textContent = 'Grading…';
+
+  const quizInfo = pathQuizData[pathId];
+  const answers = {};
+  let correctCount = 0;
+  quizInfo.questions.forEach((q, qi) => {
+    const checked = Array.from(document.querySelectorAll(`input[name="pquiz-${pathId}-${qi}"]:checked`)).map(el => parseInt(el.value));
+    answers[q.id] = checked;
+    const correct = [...q.correct_answers].sort().join(',') === [...checked].sort().join(',');
+    if (correct) correctCount++;
+  });
+
+  const score = Math.round((correctCount / quizInfo.questions.length) * 100);
+  const passed = score >= (quizInfo.settings?.quiz_passing_score ?? 70);
+  const attemptNumber = quizInfo.attempts.length + 1;
+
+  try {
+    await PathQuiz.recordAttempt(currentUser.id, pathId, attemptNumber, score, passed, answers);
+    quizInfo.attempts.push({ attempt_number: attemptNumber, score, passed });
+
+    const resultEl = document.getElementById(`path-quiz-result-${pathId}`);
+    document.getElementById(`path-quiz-form-el-${pathId}`).style.display = 'none';
+    resultEl.style.display = '';
+
+    if (passed) {
+      const path = myPaths.find(p => p.id === pathId);
+      await LearningPaths.completePath(currentUser.id, pathId);
+      path.path_status = 'completed';
+      path.path_completed_at = new Date().toISOString();
+      toast('Final quiz passed — path completed! 🎉', 'success');
+      renderPathsArea();
+    } else {
+      const remaining = (quizInfo.settings?.quiz_max_attempts ?? 3) - quizInfo.attempts.length;
+      resultEl.innerHTML = remaining > 0
+        ? `<div class="alert alert-error">You scored ${score}% — the passing score is ${quizInfo.settings?.quiz_passing_score ?? 70}%. You have ${remaining} attempt${remaining !== 1 ? 's' : ''} left.</div>
+           <button class="btn btn-primary btn-sm" style="margin-top:8px" onclick="startPathQuiz('${pathId}')">Try Again</button>`
+        : `<div class="alert alert-error">You scored ${score}% — the passing score is ${quizInfo.settings?.quiz_passing_score ?? 70}%. You've used all your attempts. Contact your administrator to reset them.</div>`;
+    }
+  } catch (err) {
+    toast(err.message, 'error');
+    submitBtn.disabled = false; submitBtn.textContent = 'Submit Final Quiz';
+  }
 }
 </script>
 </body>
