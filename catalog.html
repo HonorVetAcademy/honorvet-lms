@@ -37,9 +37,6 @@
     </header>
 
     <div class="page">
-      <!-- Category chips -->
-      <div class="chip-row" id="chip-row"></div>
-
       <div id="mandatory-section" style="margin-bottom:28px;display:none">
         <div class="section-head"><div class="section-title">⚠️ Mandatory Training</div></div>
         <div class="course-grid" id="mandatory-grid"></div>
@@ -75,7 +72,7 @@
 <script>
 document.getElementById('app-name').textContent = APP_CONFIG.appName;
 
-let allCourses = [], myEnrollments = [], currentUser = null, currentTag = '';
+let allCourses = [], myEnrollments = [], currentUser = null;
 
 (async () => {
   currentUser = await requireAuth();
@@ -89,28 +86,10 @@ let allCourses = [], myEnrollments = [], currentUser = null, currentTag = '';
     Enrollments.getMine(currentUser.id),
   ]);
 
-  // Deep-link params: ?q=search  ?tag=Category
+  // Deep-link param: ?q=search
   const urlParams = new URLSearchParams(location.search);
-  const urlQ   = urlParams.get('q')   || '';
-  const urlTag = urlParams.get('tag') || '';
+  const urlQ = urlParams.get('q') || '';
   if (urlQ) document.getElementById('search').value = urlQ;
-
-  // Build category chips from tags
-  const tags = [...new Set(allCourses.flatMap(c => c.tags || []))].sort();
-  const startTag = tags.includes(urlTag) ? urlTag : '';
-  currentTag = startTag;
-  const row = document.getElementById('chip-row');
-  row.innerHTML = [['', 'All'], ...tags.map(t => [t, t])]
-    .map(([val, label]) => `<button class="fchip${val === startTag ? ' active' : ''}" data-tag="${val}">${label}</button>`)
-    .join('');
-  row.querySelectorAll('.fchip').forEach(chip => {
-    chip.onclick = () => {
-      row.querySelectorAll('.fchip').forEach(c => c.classList.remove('active'));
-      chip.classList.add('active');
-      currentTag = chip.dataset.tag;
-      renderAll();
-    };
-  });
 
   renderAll();
   document.getElementById('search').oninput = renderAll;
@@ -124,19 +103,17 @@ function getEnrollment(courseId) {
 
 function renderAll() {
   const q      = document.getElementById('search').value.toLowerCase();
-  const tag    = currentTag;
   const status = document.getElementById('filter-status').value;
   const sort   = document.getElementById('sort-by').value;
 
   let filtered = allCourses.filter(c => {
-    const matchQ   = !q   || c.title.toLowerCase().includes(q) || (c.description||'').toLowerCase().includes(q);
-    const matchTag = !tag || (c.tags||[]).includes(tag);
+    const matchQ = !q || c.title.toLowerCase().includes(q) || (c.description||'').toLowerCase().includes(q);
     let matchStatus = true;
     if (status) {
       const s = getEnrollment(c.id)?.status || 'not_enrolled';
       matchStatus = s === status;
     }
-    return matchQ && matchTag && matchStatus;
+    return matchQ && matchStatus;
   });
 
   filtered = filtered.slice().sort((a, b) => {
@@ -149,7 +126,7 @@ function renderAll() {
 
   const mandatory = filtered.filter(c => c.is_mandatory);
   const mandSec   = document.getElementById('mandatory-section');
-  if (mandatory.length && !q && !tag && !status) {
+  if (mandatory.length && !q && !status) {
     mandSec.style.display = '';
     document.getElementById('mandatory-grid').innerHTML = mandatory.map(c => courseCard(c)).join('');
   } else {
