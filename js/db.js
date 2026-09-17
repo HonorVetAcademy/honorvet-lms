@@ -1,6 +1,9 @@
 // ── Supabase client (loaded from CDN in each HTML page) ───────
 // Wraps all database operations with clean async functions.
 
+// Who gets notified when a learner completes a course + its quiz.
+const ADMIN_NOTIFY_EMAIL = 'tanya.awasthi@honorvet.com';
+
 let _sb = null;
 
 function sb() {
@@ -212,6 +215,17 @@ const Enrollments = {
           'Certificate earned!',
           `Your certificate for "${title}" is ready to download.`,
           { course_id: courseId, course_title: title });
+
+        // Let the admin know a learner passed the quiz and finished a course.
+        const { data: learner } = await sb().from('users').select('name, email').eq('id', userId).maybeSingle();
+        const { data: admin }   = await sb().from('users').select('id').ilike('email', ADMIN_NOTIFY_EMAIL).maybeSingle();
+        const learnerLabel = learner?.name || learner?.email || 'A learner';
+        if (admin) {
+          await Notifications.create(admin.id, 'learner_completed_course',
+            `${learnerLabel} completed: ${title}`,
+            `${learnerLabel} passed the quiz and completed "${title}".`,
+            { course_id: courseId, course_title: title, learner_name: learner?.name, learner_email: learner?.email });
+        }
       } catch(e) { console.warn('Certificate/notification error:', e.message); }
     }
     return data;

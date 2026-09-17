@@ -36,8 +36,9 @@ serve(async (req: Request) => {
     const firstName    = (user.name || user.email).split(' ')[0]
     const courseTitle  = notif.data?.course_title || ''
     const courseId     = notif.data?.course_id    || ''
+    const learnerName  = notif.data?.learner_name || notif.data?.learner_email || 'A learner'
 
-    const { subject, html } = buildEmail(notif.type, firstName, courseTitle, courseId, notif.body)
+    const { subject, html } = buildEmail(notif.type, firstName, courseTitle, courseId, notif.body, learnerName)
 
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
@@ -59,7 +60,7 @@ serve(async (req: Request) => {
 })
 
 // ── Template builder ────────────────────────────────────────────
-function buildEmail(type: string, firstName: string, courseTitle: string, courseId: string, body: string) {
+function buildEmail(type: string, firstName: string, courseTitle: string, courseId: string, body: string, learnerName: string = '') {
   const courseUrl = courseId
     ? `${BASE_URL}/course.html?id=${courseId}`
     : `${BASE_URL}/catalog.html`
@@ -126,6 +127,27 @@ function buildEmail(type: string, firstName: string, courseTitle: string, course
           ctaHref: courseUrl,
           footerNote: 'Issued by HonorVet Technologies — honorvettech.com',
           badge: courseTitle ? `🎖 ${courseTitle}` : null,
+        }),
+      }
+
+    case 'learner_completed_course':
+      return {
+        subject: courseTitle
+          ? `✅ ${learnerName} completed "${courseTitle}"`
+          : `✅ ${learnerName} completed a course`,
+        html: template({
+          headerColor: '#0f766e',
+          accentColor: '#dc2626',
+          icon: '✅',
+          heading: 'Course Completed',
+          greeting: `Hi ${firstName},`,
+          paragraphs: [
+            `<strong>${learnerName}</strong> just passed the quiz and completed${courseTitle ? ` <strong>${courseTitle}</strong>` : ' a course'}.`,
+            `Their certificate has been issued automatically.`,
+          ],
+          ctaText: 'View Reports →',
+          ctaHref: `${BASE_URL}/reports.html`,
+          footerNote: 'You are receiving this as the HonorVet Academy administrator.',
         }),
       }
 
