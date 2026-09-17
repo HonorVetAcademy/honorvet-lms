@@ -218,8 +218,13 @@ const Enrollments = {
   },
 
   async unassign(userId, courseId) {
-    const { error } = await sb().from('enrollments').delete().eq('user_id', userId).eq('course_id', courseId);
+    // .select() so we can tell a real delete apart from a silent no-op —
+    // a missing RLS delete policy lets this "succeed" with zero rows affected.
+    const { data, error } = await sb().from('enrollments').delete().eq('user_id', userId).eq('course_id', courseId).select();
     if (error) throw error;
+    if (!data || data.length === 0) {
+      throw new Error('Nothing was removed — this account may be missing the enrollments delete permission (run supabase-unassign.sql).');
+    }
   },
 
   async bulkAssign(courseId, userIds) {
