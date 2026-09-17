@@ -54,33 +54,9 @@
               <div style="font-size:12px;color:var(--text-muted);margin-top:6px" id="progress-label">Not started</div>
             </div>
 
-            <!-- Legacy flow: time-gate / video-watch / ack-checkbox (used only
-                 when this course has no quiz questions) -->
-            <div id="legacy-flow" style="display:none">
-              <div id="tracking-gate" style="display:none;margin-bottom:14px">
-                <div id="tracking-msg" style="font-size:12.5px;color:var(--text-muted);margin-bottom:8px"></div>
-                <div id="time-gate-wrap" style="display:none">
-                  <div class="progress-bar" style="height:6px;margin-bottom:4px">
-                    <div id="time-bar" class="progress-fill" style="width:0%;background:var(--brand)"></div>
-                  </div>
-                  <div id="time-label" style="font-size:11.5px;color:var(--text-dim)"></div>
-                </div>
-                <div id="ack-wrap" style="display:none;margin-top:4px">
-                  <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;font-size:13px">
-                    <input type="checkbox" id="ack-checkbox" style="margin-top:2px;accent-color:var(--brand)" onchange="onAckChange()">
-                    I confirm I have completed this course content.
-                  </label>
-                </div>
-                <div id="cert-upload-wrap" style="display:none;margin-top:8px">
-                  <p style="font-size:12.5px;color:var(--text-muted);margin:0 0 8px">Upload your completion certificate (PDF, JPG, or PNG):</p>
-                  <input type="file" id="cert-file" accept=".pdf,.jpg,.jpeg,.png" style="width:100%;font-size:12px;cursor:pointer;padding:4px" onchange="onCertFileSelected(this)">
-                  <div id="cert-upload-status" style="font-size:12px;margin-top:6px;display:none"></div>
-                </div>
-              </div>
-
-              <button class="btn btn-success" style="width:100%;justify-content:center" id="complete-btn" onclick="markComplete()" disabled>
-                Mark as Complete ✓
-              </button>
+            <!-- Shown only when this course has no quiz questions set up yet -->
+            <div id="no-quiz-msg" style="display:none;font-size:12.5px;color:var(--text-muted);text-align:center;padding:8px 0">
+              This course doesn't have an assessment yet. Check back later, or contact your administrator.
             </div>
 
             <!-- Quiz flow: used whenever the course has quiz questions -->
@@ -128,9 +104,6 @@ document.getElementById('app-name').textContent = APP_CONFIG.appName;
 const params    = new URLSearchParams(location.search);
 const courseId  = params.get('id');
 let currentUser = null, enrollment = null, course = null;
-
-// Tracking state
-let trackTimer = null, trackSeconds = 0, trackMinSeconds = 0, trackUnlocked = false;
 
 (async () => {
   currentUser = await requireAuth();
@@ -182,15 +155,14 @@ let trackTimer = null, trackSeconds = 0, trackMinSeconds = 0, trackUnlocked = fa
     updateProgressUI();
   }
 
-  // Quiz flow if this course has questions; otherwise the legacy
-  // time-gate/ack-checkbox flow (unchanged, for courses without a quiz yet).
+  // Every course is completed via its quiz; show a placeholder if one
+  // hasn't been set up for this course yet.
   if (enrollment?.status !== 'completed') {
     quizQuestions = await Quiz.getQuestions(courseId);
     if (quizQuestions.length > 0) {
       await initQuizFlow();
     } else {
-      document.getElementById('legacy-flow').style.display = '';
-      startTracking(course);
+      document.getElementById('no-quiz-msg').style.display = '';
     }
   }
 })();
@@ -313,116 +285,13 @@ function updateProgressUI() {
 
   if (enrollment.status === 'completed') {
     document.getElementById('progress-label').textContent = `Completed on ${fmtDate(enrollment.completed_at)}`;
-    document.getElementById('complete-btn').style.display = 'none';
     document.getElementById('completed-msg').style.display = '';
     document.getElementById('completed-date').textContent  = fmtDate(enrollment.completed_at);
-    document.getElementById('tracking-gate').style.display = 'none';
+    document.getElementById('no-quiz-msg').style.display = 'none';
     document.getElementById('quiz-summary').style.display = 'none';
     document.getElementById('cert-card').style.display = '';
   } else {
     document.getElementById('progress-label').textContent = enrollment.status === 'in_progress' ? 'In progress' : 'Not started';
-  }
-}
-
-// ── Tracking logic ─────────────────────────────────────────────
-function startTracking(course) {
-  const type = course.content_type;
-  document.getElementById('tracking-gate').style.display = '';
-
-  if (type === 'youtube') {
-    document.getElementById('tracking-msg').textContent = 'Watch the complete video to unlock completion.';
-    // Player handles unlock via onYouTubeVideoEnded()
-  } else if (type === 'link') {
-    document.getElementById('tracking-msg').textContent = 'Complete the external course, then upload your certificate below to unlock completion.';
-    document.getElementById('cert-upload-wrap').style.display = '';
-  } else {
-    // markdown / pdf — time gate
-    trackMinSeconds = Math.min(600, Math.max(120, Math.floor((course.duration_minutes || 10) * 60 * 0.2)));
-    document.getElementById('tracking-msg').textContent = 'Read the content to unlock completion.';
-    document.getElementById('time-gate-wrap').style.display = '';
-    updateTimeGateUI();
-    trackTimer = setInterval(() => {
-      trackSeconds = Math.min(trackSeconds + 1, trackMinSeconds);
-      updateTimeGateUI();
-      if (trackSeconds >= trackMinSeconds && !trackUnlocked) {
-        clearInterval(trackTimer);
-        unlockComplete();
-      }
-    }, 1000);
-  }
-}
-
-function updateTimeGateUI() {
-  const pct = trackMinSeconds > 0 ? Math.round(trackSeconds / trackMinSeconds * 100) : 0;
-  const remaining = Math.max(0, trackMinSeconds - trackSeconds);
-  const m = Math.floor(remaining / 60), s = remaining % 60;
-  document.getElementById('time-bar').style.width = pct + '%';
-  document.getElementById('time-label').textContent = remaining > 0
-    ? `${m}m ${s < 10 ? '0' : ''}${s}s remaining`
-    : '✓ Ready to complete!';
-  // Update overall progress bar proportionally while reading
-  if (enrollment && enrollment.status !== 'completed') {
-    const readingProgress = 10 + Math.floor(pct * 0.85);
-    document.getElementById('progress-fill').style.width = readingProgress + '%';
-    document.getElementById('progress-label').textContent = 'Reading…';
-  }
-}
-
-function unlockComplete() {
-  trackUnlocked = true;
-  clearInterval(trackTimer);
-  document.getElementById('tracking-gate').style.display = 'none';
-  document.getElementById('complete-btn').disabled = false;
-  document.getElementById('progress-fill').style.width = '95%';
-  document.getElementById('progress-label').textContent = 'Ready to mark complete';
-  toast('Content viewed — you can now mark this course complete.', 'success');
-}
-
-function onAckChange() {
-  if (document.getElementById('ack-checkbox').checked) unlockComplete();
-  else {
-    document.getElementById('complete-btn').disabled = true;
-    document.getElementById('tracking-gate').style.display = '';
-  }
-}
-
-function onYouTubeVideoEnded() {
-  unlockComplete();
-}
-
-async function onCertFileSelected(input) {
-  const file = input.files[0];
-  if (!file) return;
-  const status = document.getElementById('cert-upload-status');
-  status.style.display = '';
-  status.style.color = 'var(--text-muted)';
-  status.textContent = 'Uploading certificate…';
-  try {
-    const ext = file.name.split('.').pop();
-    const path = `${currentUser.id}/${courseId}_${Date.now()}.${ext}`;
-    const { error } = await sb().storage.from('cert-uploads').upload(path, file, { upsert: true });
-    if (error) throw error;
-    status.style.color = 'var(--success)';
-    status.textContent = '✓ Certificate uploaded successfully!';
-    unlockComplete();
-  } catch(e) {
-    status.style.color = 'var(--danger)';
-    status.textContent = 'Upload failed: ' + e.message;
-    input.value = '';
-  }
-}
-
-// ── Mark complete ──────────────────────────────────────────────
-async function markComplete() {
-  const btn = document.getElementById('complete-btn');
-  btn.disabled = true; btn.textContent = 'Saving…';
-  try {
-    enrollment = await Enrollments.updateProgress(currentUser.id, courseId, 'completed', 100);
-    updateProgressUI();
-    toast('Course completed! Certificate issued. 🎉', 'success');
-  } catch(e) {
-    toast(e.message, 'error');
-    btn.disabled = false; btn.textContent = 'Mark as Complete ✓';
   }
 }
 
@@ -458,7 +327,6 @@ async function renderPlayer(course) {
           width: '100%',
           height: '460',
           playerVars: { rel: 0, modestbranding: 1 },
-          events: { onStateChange: e => { if (e.data === YT.PlayerState.ENDED) onYouTubeVideoEnded(); } }
         });
       };
       if (window.YT && window.YT.Player) window.onYouTubeIframeAPIReady();
@@ -478,11 +346,6 @@ async function renderPlayer(course) {
         <p style="font-size:15px;color:var(--text-muted);margin-bottom:20px">This course opens in an external resource.</p>
         <a href="${course.content_url}" target="_blank" rel="noopener" class="btn btn-primary btn-lg">Open Content ↗</a>
         <p style="margin-top:16px;font-size:12px;color:var(--text-dim)">${course.content_url}</p>
-        <div style="margin-top:28px;padding:16px 20px;background:#fefce8;border:1px solid #fbbf24;border-radius:10px;text-align:left">
-          <p style="margin:0;font-size:13.5px;color:#78350f;line-height:1.7">
-            <strong>📋 Important:</strong> Once you complete this course on the external platform, please come back here and upload your completion certificate using the panel on the right. Your course will only be marked as complete after your certificate has been submitted.
-          </p>
-        </div>
       </div>`;
     return;
   }
