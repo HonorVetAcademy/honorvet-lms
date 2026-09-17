@@ -235,12 +235,28 @@ const SPECIFIC_KEYWORD_COVER_IMAGES = [
   { keywords: ['cloud', 'azure', 'aws', 'data', 'analytics', 'power bi'],          images: ['https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=900&h=500&fit=crop&auto=format&q=80'] },
   { keywords: ['resume', 'curriculum vitae', ' cv '],                              images: ['https://images.unsplash.com/photo-1698047681432-006d2449c631?w=900&h=500&fit=crop&auto=format&q=80'] },
   { keywords: ['job description', 'job posting'],                                 images: ['https://images.unsplash.com/photo-1761558794306-466448dab4bc?w=900&h=500&fit=crop&auto=format&q=80'] },
-  { keywords: ['recruitment lifecycle', 'recruiter', 'sourcing'],                  images: ['https://images.unsplash.com/photo-1758518730162-09a142505bfd?w=900&h=500&fit=crop&auto=format&q=80'] },
-  { keywords: ['vms', 'vendor management', 'staffing', 'hiring', 'recruit'],       images: ['https://images.unsplash.com/photo-1635350736475-c8cef4b21906?w=900&h=500&fit=crop&auto=format&q=80'] },
+  { keywords: ['recruitment lifecycle', 'recruiter', 'sourcing'],                  images: [
+      'https://images.unsplash.com/photo-1758518730162-09a142505bfd?w=900&h=500&fit=crop&auto=format&q=80',
+      'https://images.unsplash.com/photo-1486312338219-ce68d2c6f44d?w=900&h=500&fit=crop&auto=format&q=80',
+  ]},
+  { keywords: ['vms', 'vendor management', 'staffing', 'hiring', 'recruit'],       images: [
+      'https://images.unsplash.com/photo-1635350736475-c8cef4b21906?w=900&h=500&fit=crop&auto=format&q=80',
+      'https://images.unsplash.com/photo-1603195827187-459ab02554a0?w=900&h=500&fit=crop&auto=format&q=80',
+  ]},
   { keywords: ['software', 'developer', 'programming', 'coding', 'information technology'], images: ['https://images.unsplash.com/photo-1629904853893-c2c8981a1dc5?w=900&h=500&fit=crop&auto=format&q=80'] },
   { keywords: ['facility', 'facilities', 'hospital', 'clinic'],                    images: ['https://images.unsplash.com/photo-1587351021355-a479a299d2f9?w=900&h=500&fit=crop&auto=format&q=80'] },
   { keywords: ['contract', 'glossary', 'employment type', 'legal'],                images: ['https://images.unsplash.com/photo-1562564055-71e051d33c19?w=900&h=500&fit=crop&auto=format&q=80'] },
   { keywords: ['us culture', 'american culture', 'cultural'],                      images: ['https://images.unsplash.com/photo-1562884328-39da45501a9c?w=900&h=500&fit=crop&auto=format&q=80'] },
+  { keywords: ['offer letter'],                                                    images: ['https://images.unsplash.com/photo-1603796846097-bee99e4a601f?w=900&h=500&fit=crop&auto=format&q=80'] },
+  { keywords: ['w2', 'benefits-'],                                                 images: ['https://images.unsplash.com/photo-1554224154-26032ffc0d07?w=900&h=500&fit=crop&auto=format&q=80'] },
+  { keywords: ['know your company'],                                              images: ['https://images.unsplash.com/photo-1690378820474-b468b8ee64d3?w=900&h=500&fit=crop&auto=format&q=80'] },
+  { keywords: ['eeoc', 'voicemail'],                                              images: ['https://images.unsplash.com/photo-1587560699334-bea93391dcef?w=900&h=500&fit=crop&auto=format&q=80'] },
+  { keywords: ['jobdiva', 'applicant tracking'],                                  images: ['https://images.unsplash.com/photo-1579403124614-197f69d8187b?w=900&h=500&fit=crop&auto=format&q=80'] },
+  { keywords: ['screening excellence', 'candidate screening'],                    images: ['https://images.unsplash.com/photo-1663767117072-a97deef95956?w=900&h=500&fit=crop&auto=format&q=80'] },
+  { keywords: ['negotiation'],                                                    images: ['https://images.unsplash.com/photo-1672380135241-c024f7fbfa13?w=900&h=500&fit=crop&auto=format&q=80'] },
+  { keywords: ['rapport'],                                                        images: ['https://images.unsplash.com/photo-1604881991405-b273c7a4386a?w=900&h=500&fit=crop&auto=format&q=80'] },
+  { keywords: ['allied specialt'],                                                images: ['https://images.unsplash.com/photo-1666886573531-48d2e3c2b684?w=900&h=500&fit=crop&auto=format&q=80'] },
+  { keywords: ['submittal', 'submission packet'],                                 images: ['https://images.unsplash.com/photo-1562240020-ce31ccb0fa7d?w=900&h=500&fit=crop&auto=format&q=80'] },
 ];
 
 const GENERIC_KEYWORD_COVER_IMAGES = [
