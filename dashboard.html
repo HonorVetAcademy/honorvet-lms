@@ -45,13 +45,6 @@
       <!-- Continue learning feature hero -->
       <div id="feature-area"></div>
 
-      <!-- Browse by category -->
-      <div class="section-head">
-        <div class="section-title">Browse by category</div>
-        <a href="catalog.html" class="btn btn-ghost btn-sm">All courses →</a>
-      </div>
-      <div id="cat-area"></div>
-
       <!-- Freshly brewed content -->
       <div class="section-head">
         <div class="section-title">☕ Freshly Brewed</div>
@@ -78,16 +71,13 @@
       <!-- Charts -->
       <div id="charts-area"></div>
 
-      <!-- Courses + side panels -->
-      <div class="dash-2col">
-        <div>
-          <div class="section-head">
-            <div class="section-title">My Courses</div>
-            <a href="catalog.html" class="btn btn-ghost btn-sm">View all →</a>
-          </div>
-          <div id="my-courses-area"><div class="spinner"></div></div>
+      <!-- Courses -->
+      <div>
+        <div class="section-head">
+          <div class="section-title">My Courses</div>
+          <a href="catalog.html" class="btn btn-ghost btn-sm">View all →</a>
         </div>
-        <div id="side-panels"></div>
+        <div id="my-courses-area"><div class="spinner"></div></div>
       </div>
 
       <!-- Admin org stats (shown for admin/hr/manager) -->
@@ -154,11 +144,6 @@ document.getElementById('app-name').textContent    = APP_CONFIG.appName;
   // Continue-learning hero — pick the most relevant active course
   renderFeature(enrolledCourses, user);
 
-  // Colourful category tiles (counts from real tags)
-  document.getElementById('cat-area').innerHTML =
-    categoryTilesHTML(courses) ||
-    `<div class="card card-body" style="color:var(--ink-3);font-size:13px">No categories yet — add tags to your courses to group them here.</div>`;
-
   // Freshly Brewed — newest courses (real created_at data)
   document.getElementById('fresh-area').innerHTML =
     freshlyBrewedHTML(courses, enrollments, 4) ||
@@ -170,9 +155,6 @@ document.getElementById('app-name').textContent    = APP_CONFIG.appName;
     document.getElementById('reco-section').style.display = '';
     document.getElementById('reco-area').innerHTML = recoHTML;
   }
-
-  // Side panels — real substitutes for the template's "Best Instructors"
-  renderSidePanels(courses);
 
   // Charts (Chart.js) — org-wide for admin/hr/manager, personal otherwise
   renderDashCharts(user, enrollments);
@@ -258,31 +240,6 @@ function courseCard(course, enrollment) {
     enrollment,
     actionHTML: `<a href="course.html?id=${course.id}" class="btn btn-primary btn-sm">${label}</a>`,
   });
-}
-
-// Side panel: Top Categories (Recently Added now lives in the "Freshly Brewed" section above)
-function renderSidePanels(courses) {
-  const el = document.getElementById('side-panels');
-  if (!el) return;
-
-  const counts = {};
-  courses.forEach(c => (c.tags || []).forEach(t => { counts[t] = (counts[t] || 0) + 1; }));
-  const cats = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 5);
-  const catRows = cats.length
-    ? cats.map(([tag, n], i) => {
-        const col = CAT_COLORS[i % CAT_COLORS.length];
-        return `<a class="prow" href="catalog.html?tag=${encodeURIComponent(tag)}">
-          <div class="ptile" style="background:${col.g}">${catIcon(tag)}</div>
-          <div class="pmain"><div class="pt">${tag}</div><div class="ps">${n} course${n !== 1 ? 's' : ''}</div></div>
-          <span class="ppill">View</span></a>`;
-      }).join('')
-    : `<div style="padding:16px;color:var(--ink-3);font-size:13px">No categories yet.</div>`;
-
-  el.innerHTML = `
-    <div class="panel">
-      <div class="panel-head"><span class="panel-title">Top Categories</span></div>
-      <div class="panel-list">${catRows}</div>
-    </div>`;
 }
 
 // Charts — completions-over-time (bar) + status breakdown (doughnut)

@@ -103,39 +103,6 @@ function goTopSearch(e) {
   return false;
 }
 
-// Category colour palette: one quiet charcoal icon treatment + brand-red
-// count text, matching the approved premium direction (no rainbow variety).
-const CAT_COLORS = [
-  { c: '#EE1A0F', g: 'linear-gradient(135deg,#231F20,#3A3436)' },
-];
-function catIcon(tag) {
-  const t = (tag || '').toLowerCase();
-  if (/secur|cyber|phish/.test(t)) return '🛡️';
-  if (/cloud|azure|aws/.test(t))   return '☁️';
-  if (/data|analy|ai|power/.test(t)) return '📊';
-  if (/lead|manage|team/.test(t))  return '🎖️';
-  if (/safe|compli|osha|hr/.test(t)) return '⚠️';
-  if (/it|support|hardware|network/.test(t)) return '💻';
-  if (/dev|code|program|software/.test(t)) return '⚙️';
-  return '📚';
-}
-
-// Colourful category tiles (counts computed from real course tags)
-function categoryTilesHTML(courses, limit = 6) {
-  const counts = {};
-  courses.forEach(c => (c.tags || []).forEach(t => { counts[t] = (counts[t] || 0) + 1; }));
-  const cats = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, limit);
-  if (!cats.length) return '';
-  return `<div class="cat-tiles">` + cats.map(([tag, n], i) => {
-    const col = CAT_COLORS[i % CAT_COLORS.length];
-    return `<a class="cat-tile" href="catalog.html?tag=${encodeURIComponent(tag)}">
-      <div class="cat-ico" style="background:${col.g}">${catIcon(tag)}</div>
-      <div class="cat-name">${tag}</div>
-      <div class="cat-count" style="color:${col.c}">${n} course${n !== 1 ? 's' : ''}</div>
-    </a>`;
-  }).join('') + `</div>`;
-}
-
 // Render user chip in sidebar footer
 function renderUserChip(user) {
   const chip = document.getElementById('user-chip');
