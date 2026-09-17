@@ -42,6 +42,7 @@
           <div class="player-wrap" id="player-wrap">
             <div class="spinner"></div>
           </div>
+          <div id="quiz-main-section" style="display:none;margin-top:20px"></div>
         </div>
 
         <div style="display:flex;flex-direction:column;gap:16px">
@@ -53,31 +54,41 @@
               <div style="font-size:12px;color:var(--text-muted);margin-top:6px" id="progress-label">Not started</div>
             </div>
 
-            <!-- Tracking gate (shown while unlocking) -->
-            <div id="tracking-gate" style="display:none;margin-bottom:14px">
-              <div id="tracking-msg" style="font-size:12.5px;color:var(--text-muted);margin-bottom:8px"></div>
-              <div id="time-gate-wrap" style="display:none">
-                <div class="progress-bar" style="height:6px;margin-bottom:4px">
-                  <div id="time-bar" class="progress-fill" style="width:0%;background:var(--brand)"></div>
+            <!-- Legacy flow: time-gate / video-watch / ack-checkbox (used only
+                 when this course has no quiz questions) -->
+            <div id="legacy-flow" style="display:none">
+              <div id="tracking-gate" style="display:none;margin-bottom:14px">
+                <div id="tracking-msg" style="font-size:12.5px;color:var(--text-muted);margin-bottom:8px"></div>
+                <div id="time-gate-wrap" style="display:none">
+                  <div class="progress-bar" style="height:6px;margin-bottom:4px">
+                    <div id="time-bar" class="progress-fill" style="width:0%;background:var(--brand)"></div>
+                  </div>
+                  <div id="time-label" style="font-size:11.5px;color:var(--text-dim)"></div>
                 </div>
-                <div id="time-label" style="font-size:11.5px;color:var(--text-dim)"></div>
+                <div id="ack-wrap" style="display:none;margin-top:4px">
+                  <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;font-size:13px">
+                    <input type="checkbox" id="ack-checkbox" style="margin-top:2px;accent-color:var(--brand)" onchange="onAckChange()">
+                    I confirm I have completed this course content.
+                  </label>
+                </div>
+                <div id="cert-upload-wrap" style="display:none;margin-top:8px">
+                  <p style="font-size:12.5px;color:var(--text-muted);margin:0 0 8px">Upload your completion certificate (PDF, JPG, or PNG):</p>
+                  <input type="file" id="cert-file" accept=".pdf,.jpg,.jpeg,.png" style="width:100%;font-size:12px;cursor:pointer;padding:4px" onchange="onCertFileSelected(this)">
+                  <div id="cert-upload-status" style="font-size:12px;margin-top:6px;display:none"></div>
+                </div>
               </div>
-              <div id="ack-wrap" style="display:none;margin-top:4px">
-                <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;font-size:13px">
-                  <input type="checkbox" id="ack-checkbox" style="margin-top:2px;accent-color:var(--brand)" onchange="onAckChange()">
-                  I confirm I have completed this course content.
-                </label>
-              </div>
-              <div id="cert-upload-wrap" style="display:none;margin-top:8px">
-                <p style="font-size:12.5px;color:var(--text-muted);margin:0 0 8px">Upload your completion certificate (PDF, JPG, or PNG):</p>
-                <input type="file" id="cert-file" accept=".pdf,.jpg,.jpeg,.png" style="width:100%;font-size:12px;cursor:pointer;padding:4px" onchange="onCertFileSelected(this)">
-                <div id="cert-upload-status" style="font-size:12px;margin-top:6px;display:none"></div>
-              </div>
+
+              <button class="btn btn-success" style="width:100%;justify-content:center" id="complete-btn" onclick="markComplete()" disabled>
+                Mark as Complete ✓
+              </button>
             </div>
 
-            <button class="btn btn-success" style="width:100%;justify-content:center" id="complete-btn" onclick="markComplete()" disabled>
-              Mark as Complete ✓
-            </button>
+            <!-- Quiz flow: used whenever the course has quiz questions -->
+            <div id="quiz-summary" style="display:none">
+              <div id="quiz-summary-text" style="font-size:12.5px;color:var(--text-muted);margin-bottom:12px"></div>
+              <button class="btn btn-primary" style="width:100%;justify-content:center" id="quiz-start-btn" onclick="scrollToQuiz()">Start Quiz</button>
+            </div>
+
             <div id="completed-msg" style="display:none;text-align:center;padding:10px 0">
               <div style="color:var(--success);font-size:13px;font-weight:600">✓ Completed</div>
               <div id="completed-date" style="font-size:11.5px;color:var(--text-muted);margin-top:2px"></div>
@@ -181,11 +192,127 @@ let trackTimer = null, trackSeconds = 0, trackMinSeconds = 0, trackUnlocked = fa
     updateProgressUI();
   }
 
-  // Start tracking only if not already completed
+  // Quiz flow if this course has questions; otherwise the legacy
+  // time-gate/ack-checkbox flow (unchanged, for courses without a quiz yet).
   if (enrollment?.status !== 'completed') {
-    startTracking(course);
+    quizQuestions = await Quiz.getQuestions(courseId);
+    if (quizQuestions.length > 0) {
+      await initQuizFlow();
+    } else {
+      document.getElementById('legacy-flow').style.display = '';
+      startTracking(course);
+    }
   }
 })();
+
+// ── Quiz flow ────────────────────────────────────────────────────
+let quizQuestions = [];
+let quizSettings = { quiz_passing_score: 70, quiz_max_attempts: 3 };
+let quizAttempts = [];
+
+async function initQuizFlow() {
+  const [settings, attempts] = await Promise.all([
+    Quiz.getSettings(courseId),
+    Quiz.getAttempts(currentUser.id, courseId),
+  ]);
+  quizSettings = settings || quizSettings;
+  quizAttempts = attempts;
+  document.getElementById('quiz-summary').style.display = '';
+  renderQuizSummary();
+}
+
+function renderQuizSummary() {
+  const remaining = quizSettings.quiz_max_attempts - quizAttempts.length;
+  const summaryEl = document.getElementById('quiz-summary-text');
+  const btn = document.getElementById('quiz-start-btn');
+  const attemptWord = quizAttempts.length > 0 ? 'Retake Quiz' : 'Start Quiz';
+
+  summaryEl.innerHTML =
+    `This course is completed by passing a quiz.<br>` +
+    `<b>${quizQuestions.length} question${quizQuestions.length !== 1 ? 's' : ''}</b> · ` +
+    `Passing score <b>${quizSettings.quiz_passing_score}%</b> · ` +
+    `Attempts remaining: <b>${Math.max(0, remaining)}/${quizSettings.quiz_max_attempts}</b>`;
+
+  if (remaining <= 0) {
+    btn.disabled = true;
+    btn.textContent = 'No attempts remaining';
+    summaryEl.innerHTML += `<br><span style="color:var(--danger)">You've used all your attempts. Contact your administrator to reset them.</span>`;
+  } else {
+    btn.disabled = false;
+    btn.textContent = attemptWord;
+  }
+}
+
+function renderQuizForm() {
+  const wrap = document.getElementById('quiz-main-section');
+  wrap.innerHTML = `
+    <div class="card card-body">
+      <div class="card-title" style="margin-bottom:14px">Quiz — ${course.title}</div>
+      <form id="quiz-form">
+        ${quizQuestions.map((q, qi) => `
+          <div style="margin-bottom:22px;padding-bottom:18px;${qi < quizQuestions.length - 1 ? 'border-bottom:1px solid var(--border-2)' : ''}">
+            <div style="font-size:13.5px;font-weight:600;margin-bottom:10px">${qi + 1}. ${escHtml(q.question_text)}</div>
+            ${q.options.map((opt, oi) => `
+              <label style="display:flex;align-items:center;gap:9px;padding:6px 2px;cursor:pointer;font-size:13px">
+                <input type="${q.type === 'multi' ? 'checkbox' : 'radio'}" name="quiz-q-${qi}" value="${oi}">
+                ${escHtml(opt)}
+              </label>`).join('')}
+          </div>`).join('')}
+        <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center">Submit Quiz</button>
+      </form>
+      <div id="quiz-result" style="display:none;margin-top:16px"></div>
+    </div>`;
+  document.getElementById('quiz-form').onsubmit = submitQuiz;
+  wrap.style.display = '';
+  wrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function scrollToQuiz() { renderQuizForm(); }
+
+async function submitQuiz(e) {
+  e.preventDefault();
+  const submitBtn = e.target.querySelector('button[type="submit"]');
+  submitBtn.disabled = true; submitBtn.textContent = 'Grading…';
+
+  const answers = {};
+  let correctCount = 0;
+  quizQuestions.forEach((q, qi) => {
+    const checked = Array.from(document.querySelectorAll(`input[name="quiz-q-${qi}"]:checked`)).map(el => parseInt(el.value));
+    answers[q.id] = checked;
+    const correct = [...q.correct_answers].sort().join(',') === [...checked].sort().join(',');
+    if (correct) correctCount++;
+  });
+
+  const score = Math.round((correctCount / quizQuestions.length) * 100);
+  const passed = score >= quizSettings.quiz_passing_score;
+  const attemptNumber = quizAttempts.length + 1;
+
+  try {
+    await Quiz.recordAttempt(currentUser.id, courseId, attemptNumber, score, passed, answers);
+    quizAttempts.push({ attempt_number: attemptNumber, score, passed });
+
+    const resultEl = document.getElementById('quiz-result');
+    document.getElementById('quiz-form').style.display = 'none';
+    resultEl.style.display = '';
+
+    if (passed) {
+      enrollment = await Enrollments.updateProgress(currentUser.id, courseId, 'completed', 100);
+      updateProgressUI();
+      resultEl.innerHTML = `<div class="alert alert-success">🎉 You scored ${score}% — you passed! This course is now marked complete and your certificate has been issued.</div>`;
+      toast('Quiz passed! Certificate issued. 🎉', 'success');
+    } else {
+      renderQuizSummary();
+      const remaining = quizSettings.quiz_max_attempts - quizAttempts.length;
+      resultEl.innerHTML = remaining > 0
+        ? `<div class="alert alert-error">You scored ${score}% — the passing score is ${quizSettings.quiz_passing_score}%. You have ${remaining} attempt${remaining !== 1 ? 's' : ''} left.</div>
+           <button class="btn btn-primary" style="width:100%;justify-content:center;margin-top:10px" onclick="renderQuizForm()">Try Again</button>`
+        : `<div class="alert alert-error">You scored ${score}% — the passing score is ${quizSettings.quiz_passing_score}%. You've used all your attempts. Contact your administrator to reset them.</div>`;
+    }
+  } catch (err) {
+    toast(err.message, 'error');
+    submitBtn.disabled = false; submitBtn.textContent = 'Submit Quiz';
+  }
+}
 
 // ── Progress UI ────────────────────────────────────────────────
 function updateProgressUI() {
@@ -200,6 +327,7 @@ function updateProgressUI() {
     document.getElementById('completed-msg').style.display = '';
     document.getElementById('completed-date').textContent  = fmtDate(enrollment.completed_at);
     document.getElementById('tracking-gate').style.display = 'none';
+    document.getElementById('quiz-summary').style.display = 'none';
     document.getElementById('cert-card').style.display = '';
   } else {
     document.getElementById('progress-label').textContent = enrollment.status === 'in_progress' ? 'In progress' : 'Not started';

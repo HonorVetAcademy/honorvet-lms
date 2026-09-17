@@ -260,6 +260,47 @@ const Certificates = {
   },
 };
 
+// ── Quiz (one assessment per course) ────────────────────────────
+const Quiz = {
+  async getQuestions(courseId) {
+    const { data, error } = await sb().from('quiz_questions').select('*').eq('course_id', courseId).order('position');
+    if (error) throw error;
+    return data || [];
+  },
+  async upsertQuestion(question) {
+    const { data, error } = await sb().from('quiz_questions').upsert(question, { onConflict: 'id' }).select().single();
+    if (error) throw error;
+    return data;
+  },
+  async deleteQuestion(id) {
+    const { error } = await sb().from('quiz_questions').delete().eq('id', id);
+    if (error) throw error;
+  },
+  async getSettings(courseId) {
+    const { data, error } = await sb().from('courses').select('quiz_passing_score, quiz_max_attempts').eq('id', courseId).single();
+    if (error) throw error;
+    return data;
+  },
+  async updateSettings(courseId, { quiz_passing_score, quiz_max_attempts }) {
+    const { error } = await sb().from('courses').update({ quiz_passing_score, quiz_max_attempts }).eq('id', courseId);
+    if (error) throw error;
+  },
+  async getAttempts(userId, courseId) {
+    const { data, error } = await sb().from('quiz_attempts').select('*').eq('user_id', userId).eq('course_id', courseId).order('attempt_number');
+    if (error) throw error;
+    return data || [];
+  },
+  async recordAttempt(userId, courseId, attemptNumber, score, passed, answers) {
+    const { data, error } = await sb().from('quiz_attempts').insert({
+      id: 'attempt-' + Date.now(),
+      user_id: userId, course_id: courseId,
+      attempt_number: attemptNumber, score, passed, answers,
+    }).select().single();
+    if (error) throw error;
+    return data;
+  },
+};
+
 // ── Learning Paths ─────────────────────────────────────────────
 const LearningPaths = {
   async getAll() {

@@ -285,6 +285,75 @@
   </div>
 </div>
 
+<!-- Quiz management modal -->
+<div class="modal-overlay" id="quiz-modal">
+  <div class="modal" style="max-width:640px">
+    <div class="modal-header">
+      <span class="modal-title">Quiz — <span id="quiz-course-name"></span></span>
+      <button class="modal-close" onclick="closeModal('quiz-modal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="quiz-course-id">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px">
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label">Passing score (%)</label>
+          <input class="form-input" type="number" id="quiz-passing-score" min="1" max="100" onchange="saveQuizSettings()">
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label">Max attempts</label>
+          <input class="form-input" type="number" id="quiz-max-attempts" min="1" max="10" onchange="saveQuizSettings()">
+        </div>
+      </div>
+      <div class="section-head" style="margin-bottom:10px">
+        <div class="section-title" style="font-size:13.5px">Questions</div>
+        <button class="btn btn-secondary btn-sm" onclick="openQuestionEditor()">+ Add Question</button>
+      </div>
+      <div id="quiz-questions-list"></div>
+      <div class="form-hint" id="quiz-empty-hint" style="margin-top:10px;display:none">
+        No questions yet — learners will use the old time-based completion until you add at least one question.
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('quiz-modal')">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- Question editor modal -->
+<div class="modal-overlay" id="question-modal">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-header">
+      <span class="modal-title" id="question-modal-title">Add Question</span>
+      <button class="modal-close" onclick="closeModal('question-modal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="question-modal-alert"></div>
+      <input type="hidden" id="q-id">
+      <div class="form-group">
+        <label class="form-label">Question text *</label>
+        <textarea class="form-textarea" id="q-text" placeholder="e.g. Which of the following is a required step before placing a candidate?" style="min-height:60px"></textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Question type</label>
+        <select class="form-select" id="q-type" onchange="renderQuestionOptions()">
+          <option value="single">Multiple choice (single answer)</option>
+          <option value="true_false">True / False</option>
+          <option value="multi">Multiple select (choose all that apply)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Options — check the correct answer(s)</label>
+        <div id="q-options-list"></div>
+        <button class="btn btn-ghost btn-sm" id="q-add-option-btn" onclick="addQuestionOption()" style="margin-top:6px">+ Add option</button>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('question-modal')">Cancel</button>
+      <button class="btn btn-primary" id="question-save-btn" onclick="saveQuestion()">Save Question</button>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="js/config.js"></script>
 <script src="js/db.js"></script>
@@ -378,6 +447,7 @@ function renderTable() {
       <td style="font-size:12px;color:var(--text-muted)">${(c.tags||[]).join(', ')||'—'}</td>
       <td>
         <div style="display:flex;gap:6px">
+          <button class="btn btn-ghost btn-sm" onclick="openQuizModal('${c.id}','${escQ(c.title)}')">📝 Quiz</button>
           <button class="btn btn-ghost btn-sm" onclick="openAssignModal('${c.id}','${escQ(c.title)}')">Assign</button>
           <button class="btn btn-ghost btn-sm" onclick="openEditModal(${JSON.stringify(c).replace(/"/g,'&quot;')})">Edit</button>
           <a href="course.html?id=${c.id}" class="btn btn-ghost btn-sm" target="_blank">Preview</a>
@@ -779,6 +849,170 @@ async function doPathAssign() {
     btn.disabled = false; btn.textContent = 'Assign';
   }
 }
+
+// ── Quiz management ──────────────────────────────────────────────
+let quizQuestionsCache = [];
+
+async function openQuizModal(courseId, courseTitle) {
+  document.getElementById('quiz-course-id').value = courseId;
+  document.getElementById('quiz-course-name').textContent = courseTitle;
+  openModal('quiz-modal');
+
+  const [settings, questions] = await Promise.all([
+    Quiz.getSettings(courseId),
+    Quiz.getQuestions(courseId),
+  ]);
+  document.getElementById('quiz-passing-score').value = settings?.quiz_passing_score ?? 70;
+  document.getElementById('quiz-max-attempts').value  = settings?.quiz_max_attempts ?? 3;
+  quizQuestionsCache = questions;
+  renderQuizQuestionsList();
+}
+
+async function saveQuizSettings() {
+  const courseId = document.getElementById('quiz-course-id').value;
+  const quiz_passing_score = parseInt(document.getElementById('quiz-passing-score').value) || 70;
+  const quiz_max_attempts  = parseInt(document.getElementById('quiz-max-attempts').value) || 3;
+  try {
+    await Quiz.updateSettings(courseId, { quiz_passing_score, quiz_max_attempts });
+    toast('Quiz settings saved.', 'success');
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+function renderQuizQuestionsList() {
+  const wrap = document.getElementById('quiz-questions-list');
+  const hint = document.getElementById('quiz-empty-hint');
+  hint.style.display = quizQuestionsCache.length ? 'none' : '';
+  if (!quizQuestionsCache.length) { wrap.innerHTML = ''; return; }
+
+  const typeLabels = { single: 'Single choice', true_false: 'True/False', multi: 'Multi-select' };
+  wrap.innerHTML = quizQuestionsCache.map((q, i) => `
+    <div class="card" style="margin-bottom:8px">
+      <div class="card-body" style="padding:14px 16px;display:flex;align-items:flex-start;gap:12px">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:11px;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">Q${i + 1} · ${typeLabels[q.type] || q.type}</div>
+          <div style="font-size:13.5px;font-weight:600">${escHtml(q.question_text)}</div>
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0">
+          <button class="btn btn-ghost btn-sm" onclick='openQuestionEditor(${JSON.stringify(q).replace(/'/g, "&#39;")})'>Edit</button>
+          <button class="btn btn-ghost btn-sm" style="color:var(--danger)" onclick="deleteQuestionRow('${q.id}')">Delete</button>
+        </div>
+      </div>
+    </div>`).join('');
+}
+
+async function deleteQuestionRow(id) {
+  if (!confirm('Delete this question?')) return;
+  try {
+    await Quiz.deleteQuestion(id);
+    quizQuestionsCache = quizQuestionsCache.filter(q => q.id !== id);
+    renderQuizQuestionsList();
+    toast('Question deleted.', 'success');
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+function openQuestionEditor(question) {
+  document.getElementById('question-modal-title').textContent = question ? 'Edit Question' : 'Add Question';
+  document.getElementById('q-id').value = question?.id || '';
+  document.getElementById('q-text').value = question?.question_text || '';
+  document.getElementById('q-type').value = question?.type || 'single';
+  document.getElementById('question-modal-alert').innerHTML = '';
+  renderQuestionOptions(question?.options || [], question?.correct_answers || []);
+  openModal('question-modal');
+}
+
+// Renders the option-row editor. For true/false the two options are fixed;
+// for single/multi, options are free-text rows the admin can add/remove.
+function renderQuestionOptions(existingOptions, existingCorrect) {
+  const type = document.getElementById('q-type').value;
+  const list = document.getElementById('q-options-list');
+  const addBtn = document.getElementById('q-add-option-btn');
+
+  if (type === 'true_false') {
+    addBtn.style.display = 'none';
+    const correct = existingCorrect && existingCorrect.length ? existingCorrect[0] : 0;
+    list.innerHTML = ['True', 'False'].map((label, i) => `
+      <label style="display:flex;align-items:center;gap:10px;padding:8px 4px;cursor:pointer">
+        <input type="radio" name="q-correct" value="${i}" ${correct === i ? 'checked' : ''}>
+        <span style="font-size:13.5px">${label}</span>
+      </label>`).join('');
+    return;
+  }
+
+  addBtn.style.display = '';
+  const opts = (existingOptions && existingOptions.length) ? existingOptions : ['', ''];
+  const correctSet = new Set(existingCorrect || []);
+  const inputType = type === 'multi' ? 'checkbox' : 'radio';
+  const inputName = type === 'multi' ? '' : 'name="q-correct"';
+  list.innerHTML = opts.map((opt, i) => `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+      <input type="${inputType}" ${inputName} value="${i}" class="q-correct-chk" ${correctSet.has(i) ? 'checked' : ''}>
+      <input class="form-input q-opt-text" placeholder="Option ${i + 1}" value="${escAttr(opt)}" style="flex:1">
+      <button type="button" class="btn btn-ghost btn-sm" onclick="this.closest('div').remove()" title="Remove option">✕</button>
+    </div>`).join('');
+}
+
+function addQuestionOption() {
+  const list = document.getElementById('q-options-list');
+  const type = document.getElementById('q-type').value;
+  const inputType = type === 'multi' ? 'checkbox' : 'radio';
+  const inputName = type === 'multi' ? '' : 'name="q-correct"';
+  const i = list.querySelectorAll('.q-opt-text').length;
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:6px';
+  row.innerHTML = `
+    <input type="${inputType}" ${inputName} value="${i}" class="q-correct-chk">
+    <input class="form-input q-opt-text" placeholder="Option ${i + 1}" style="flex:1">
+    <button type="button" class="btn btn-ghost btn-sm" onclick="this.closest('div').remove()" title="Remove option">✕</button>`;
+  list.appendChild(row);
+}
+
+async function saveQuestion() {
+  const alertEl = document.getElementById('question-modal-alert');
+  alertEl.innerHTML = '';
+  const courseId = document.getElementById('quiz-course-id').value;
+  const id = document.getElementById('q-id').value || 'q-' + Date.now();
+  const question_text = document.getElementById('q-text').value.trim();
+  const type = document.getElementById('q-type').value;
+  if (!question_text) { alertEl.innerHTML = '<div class="alert alert-error">Question text is required.</div>'; return; }
+
+  let options, correct_answers;
+  if (type === 'true_false') {
+    options = ['True', 'False'];
+    const checked = document.querySelector('input[name="q-correct"]:checked');
+    if (!checked) { alertEl.innerHTML = '<div class="alert alert-error">Select the correct answer.</div>'; return; }
+    correct_answers = [parseInt(checked.value)];
+  } else {
+    const optionEls = Array.from(document.querySelectorAll('.q-opt-text'));
+    options = optionEls.map(el => el.value.trim());
+    if (options.some(o => !o) || options.length < 2) {
+      alertEl.innerHTML = '<div class="alert alert-error">Add at least 2 non-empty options.</div>'; return;
+    }
+    const checkedEls = Array.from(document.querySelectorAll('.q-correct-chk:checked'));
+    if (!checkedEls.length) { alertEl.innerHTML = '<div class="alert alert-error">Select at least one correct answer.</div>'; return; }
+    correct_answers = checkedEls.map(el => parseInt(el.value));
+  }
+
+  const btn = document.getElementById('question-save-btn');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    const saved = await Quiz.upsertQuestion({
+      id, course_id: courseId, question_text, type, options, correct_answers,
+      position: quizQuestionsCache.findIndex(q => q.id === id) >= 0
+        ? quizQuestionsCache.find(q => q.id === id).position
+        : quizQuestionsCache.length,
+    });
+    const idx = quizQuestionsCache.findIndex(q => q.id === id);
+    if (idx >= 0) quizQuestionsCache[idx] = saved; else quizQuestionsCache.push(saved);
+    renderQuizQuestionsList();
+    closeModal('question-modal');
+    toast('Question saved.', 'success');
+  } catch (e) {
+    alertEl.innerHTML = `<div class="alert alert-error">${e.message}</div>`;
+  }
+  btn.disabled = false; btn.textContent = 'Save Question';
+}
+
+function escAttr(s) { return (s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;'); }
 </script>
 </body>
 </html>
