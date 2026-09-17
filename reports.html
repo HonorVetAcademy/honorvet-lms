@@ -240,20 +240,35 @@ function renderAssignmentsTable() {
     return;
   }
   document.getElementById('assignments-table-wrap').innerHTML = `<table>
-    <thead><tr><th>Employee</th><th>Course</th><th>Assigned On</th><th>Status</th><th>Progress</th><th>Completed On</th></tr></thead>
+    <thead><tr><th>Employee</th><th>Course</th><th>Assigned On</th><th>Status</th><th>Progress</th><th>Completed On</th><th></th></tr></thead>
     <tbody>${rows.map(e => {
       const u = e.users || allUsers.find(u => u.id === e.user_id) || {};
-      const c = allCourses.find(c => c.id === e.course_id) || {};
+      const c = allCourses.find(c => c.id === e.course_id);
+      const courseLabel = c ? `${c.icon || '📖'} ${c.title}` : `<span style="color:var(--danger)">⚠ Deleted course</span> <span style="color:var(--text-dim);font-size:11px">(${e.course_id})</span>`;
+      const label = `${u.name || u.email || 'this user'} — ${c ? c.title : e.course_id}`;
       return `<tr>
         <td><strong>${u.name || '—'}</strong><div style="font-size:11.5px;color:var(--text-muted)">${u.email || ''}</div></td>
-        <td>${c.icon || '📖'} ${c.title || e.course_id}</td>
+        <td>${courseLabel}</td>
         <td style="color:var(--text-muted);white-space:nowrap">${fmtDateTime(e.created_at)}</td>
         <td>${statusBadge(e.status)}</td>
         <td style="color:var(--text-muted)">${e.progress || 0}%</td>
         <td style="color:var(--text-muted);white-space:nowrap">${e.completed_at ? fmtDateTime(e.completed_at) : '—'}</td>
+        <td><button class="btn btn-ghost btn-sm" style="color:var(--danger)" onclick="removeAssignment('${e.user_id}','${e.course_id}','${escHtml(label).replace(/'/g, "&#39;")}')">Remove</button></td>
       </tr>`;
     }).join('')}</tbody>
   </table>`;
+}
+
+async function removeAssignment(userId, courseId, label) {
+  if (!confirm(`Remove "${label}"? Progress will be lost.`)) return;
+  try {
+    await Enrollments.unassign(userId, courseId);
+    allEnrollments = allEnrollments.filter(e => !(e.user_id === userId && e.course_id === courseId));
+    renderUserTable();
+    renderCourseTable();
+    renderAssignmentsTable();
+    toast('Removed.', 'success');
+  } catch (e) { toast(e.message, 'error'); }
 }
 
 function renderCompliance() {
