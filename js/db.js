@@ -217,6 +217,11 @@ const Enrollments = {
     return data;
   },
 
+  async unassign(userId, courseId) {
+    const { error } = await sb().from('enrollments').delete().eq('user_id', userId).eq('course_id', courseId);
+    if (error) throw error;
+  },
+
   async bulkAssign(courseId, userIds) {
     const rows = userIds.map(uid => ({ user_id: uid, course_id: courseId, status: 'not_started' }));
     const { data, error } = await sb().from('enrollments').upsert(rows, { onConflict: 'user_id,course_id' }).select();

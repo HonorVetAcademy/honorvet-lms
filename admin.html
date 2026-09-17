@@ -141,6 +141,14 @@
       <div id="assign-alert"></div>
       <input type="hidden" id="assign-course-id">
       <p style="font-size:13px;color:var(--text-muted);margin-bottom:14px" id="assign-course-name"></p>
+
+      <div style="margin-bottom:18px">
+        <label class="form-label">Currently assigned <span id="assigned-count" style="font-weight:400;color:var(--text-muted)"></span></label>
+        <div id="currently-assigned-list" style="max-height:160px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:4px">
+          <div style="padding:10px;color:var(--text-muted);font-size:13px">Loading…</div>
+        </div>
+      </div>
+
       <div class="form-group">
         <label class="form-label">Assign to</label>
         <select class="form-select" id="assign-scope" onchange="onScopeChange()">
@@ -619,13 +627,52 @@ async function deleteCourse(id, title) {
   }
 }
 
-function openAssignModal(courseId, courseTitle) {
+async function openAssignModal(courseId, courseTitle) {
   document.getElementById('assign-course-id').value = courseId;
   document.getElementById('assign-course-name').textContent = 'Course: ' + courseTitle;
   document.getElementById('assign-alert').innerHTML = '';
   document.getElementById('assign-btn').disabled = false;
   document.getElementById('assign-btn').textContent = 'Assign';
   openModal('assign-modal');
+  await loadCurrentlyAssigned(courseId);
+}
+
+async function loadCurrentlyAssigned(courseId) {
+  const wrap = document.getElementById('currently-assigned-list');
+  wrap.innerHTML = '<div style="padding:10px;color:var(--text-muted);font-size:13px">Loading…</div>';
+  try {
+    const enrolled = await Enrollments.getForCourse(courseId);
+    renderCurrentlyAssignedList(courseId, enrolled);
+  } catch (e) {
+    wrap.innerHTML = `<div style="padding:10px;color:var(--danger);font-size:13px">Could not load: ${e.message}</div>`;
+  }
+}
+
+function renderCurrentlyAssignedList(courseId, enrolled) {
+  const wrap = document.getElementById('currently-assigned-list');
+  document.getElementById('assigned-count').textContent = enrolled.length ? `(${enrolled.length})` : '';
+  if (!enrolled.length) {
+    wrap.innerHTML = '<div style="padding:10px;color:var(--text-muted);font-size:13px">No one assigned yet.</div>';
+    return;
+  }
+  const statusLabels = { completed: 'Completed', in_progress: 'In progress', not_started: 'Not started' };
+  wrap.innerHTML = enrolled.map(e => `
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 8px">
+      <div style="min-width:0">
+        <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${e.users?.name || e.users?.email || '—'}</div>
+        <div style="font-size:11.5px;color:var(--text-muted)">${statusLabels[e.status] || e.status}</div>
+      </div>
+      <button class="btn btn-ghost btn-sm" style="color:var(--danger);flex-shrink:0" onclick="unassignUser('${courseId}','${e.user_id}','${escQ(e.users?.name || e.users?.email || 'this user')}')">Remove</button>
+    </div>`).join('');
+}
+
+async function unassignUser(courseId, userId, label) {
+  if (!confirm(`Remove "${label}" from this course? Their progress will be lost.`)) return;
+  try {
+    await Enrollments.unassign(userId, courseId);
+    toast('Unassigned.', 'success');
+    await loadCurrentlyAssigned(courseId);
+  } catch (e) { toast(e.message, 'error'); }
 }
 
 async function doAssign() {
@@ -656,6 +703,7 @@ async function doAssign() {
     await Enrollments.bulkAssign(courseId, ids);
     alertEl.innerHTML = `<div class="alert alert-success">✓ Assigned to ${ids.length} user${ids.length>1?'s':''}.</div>`;
     btn.textContent = 'Done ✓';
+    await loadCurrentlyAssigned(courseId);
   } catch(e) {
     alertEl.innerHTML = `<div class="alert alert-error">${e.message}</div>`;
     btn.disabled = false; btn.textContent = 'Assign';
