@@ -327,7 +327,7 @@ function courseCardHTML(course, opts = {}) {
       ${progressBlock}
     </div>
     <div class="cc-foot">
-      ${opts.badgeHTML || `<span class="cc-tags">${(course.tags || []).slice(0, 2).join(' · ')}</span>`}
+      ${opts.badgeHTML || ''}
       ${opts.actionHTML || ''}
     </div>
   </article>`;

@@ -109,10 +109,7 @@
           <label class="form-label">Duration (minutes)</label>
           <input class="form-input" type="number" id="f-duration" placeholder="30" min="1">
         </div>
-        <div class="form-group">
-          <label class="form-label">Tags (comma separated)</label>
-          <input class="form-input" id="f-tags" placeholder="safety, mandatory, hr">
-        </div>
+        <input type="hidden" id="f-tags">
         <div class="form-group" style="grid-column:1/-1">
           <label class="form-label">Cover image URL <span style="font-weight:400;color:var(--text-muted)">(optional)</span></label>
           <input class="form-input" id="f-cover" placeholder="https://... — leave blank to auto-pick a photo from the course title">
@@ -434,7 +431,7 @@ function renderTable() {
     return;
   }
   wrap.innerHTML = `<table>
-    <thead><tr><th></th><th>Title</th><th>Type</th><th>Duration</th><th>Mandatory</th><th>Tags</th><th></th></tr></thead>
+    <thead><tr><th></th><th>Title</th><th>Type</th><th>Duration</th><th>Mandatory</th><th></th></tr></thead>
     <tbody>${courses.map(c => `<tr>
       <td style="font-size:22px;text-align:center;padding:8px 12px">${c.icon||'📖'}</td>
       <td>
@@ -444,7 +441,6 @@ function renderTable() {
       <td>${typeLabel(c.content_type)}</td>
       <td style="color:var(--text-muted)">${c.duration_minutes ? c.duration_minutes+' min' : '—'}</td>
       <td>${c.is_mandatory ? '<span class="badge badge-red">Yes</span>' : '<span class="badge badge-gray">No</span>'}</td>
-      <td style="font-size:12px;color:var(--text-muted)">${(c.tags||[]).join(', ')||'—'}</td>
       <td>
         <div style="display:flex;gap:6px">
           <button class="btn btn-ghost btn-sm" onclick="openQuizModal('${c.id}','${escQ(c.title)}')">📝 Quiz</button>
