@@ -116,6 +116,18 @@
 document.getElementById('org-name').textContent = APP_CONFIG.appName;
 document.title = APP_CONFIG.appName + ' — Sign In';
 
+// Surface any auth error redirected back via URL hash (e.g. an expired or
+// already-used password reset link) instead of silently showing the login form.
+(() => {
+  const hash = new URLSearchParams(location.hash.slice(1));
+  if (hash.get('error')) {
+    const desc = (hash.get('error_description') || '').replace(/\+/g, ' ');
+    document.getElementById('alert-area').innerHTML =
+      `<div class="alert alert-error">${desc || 'That link is invalid or has expired.'} Request a new one below.</div>`;
+    history.replaceState(null, '', location.pathname);
+  }
+})();
+
 // If already logged in, go to dashboard
 (async () => {
   const session = await Auth.getSession();
