@@ -44,6 +44,7 @@
         <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
           <button class="btn btn-secondary btn-sm" id="fill-covers-btn" onclick="fillMissingCovers()">🖼 Fill Missing Covers</button>
         </div>
+        <div id="fill-covers-result"></div>
         <div class="table-wrap" id="courses-table-wrap">
           <div class="spinner"></div>
         </div>
@@ -438,17 +439,20 @@ async function loadCourses() {
 
 async function fillMissingCovers() {
   const missing = courses.filter(c => !c.cover_image_url);
+  const resultsEl = document.getElementById('fill-covers-result');
+  resultsEl.innerHTML = '';
   if (!missing.length) { toast('Every course already has a cover photo.', 'success'); return; }
   if (!confirm(`Find an AI-picked cover photo for ${missing.length} course${missing.length > 1 ? 's' : ''} without one?`)) return;
 
   const btn = document.getElementById('fill-covers-btn');
   btn.disabled = true;
-  let done = 0, failed = 0;
+  const failures = [];
+  let done = 0;
   const session = await sb().auth.getSession();
   const token   = session?.data?.session?.access_token;
 
   for (const c of missing) {
-    btn.textContent = `Filling ${done + failed + 1}/${missing.length}…`;
+    btn.textContent = `Filling ${done + failures.length + 1}/${missing.length}…`;
     try {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/ai-course-autofill`, {
         method: 'POST',
@@ -460,17 +464,24 @@ async function fillMissingCovers() {
         await Courses.upsert({ ...c, cover_image_url: data.cover_image_url });
         done++;
       } else {
-        failed++;
+        failures.push(`${c.title} — ${data.error || 'no matching photo found'}`);
       }
     } catch (e) {
-      failed++;
+      failures.push(`${c.title} — ${e.message}`);
     }
   }
 
   btn.disabled = false;
   btn.textContent = '🖼 Fill Missing Covers';
   await loadCourses();
-  toast(`${done} cover${done !== 1 ? 's' : ''} filled${failed ? ` — ${failed} failed` : ''}.`, failed ? 'error' : 'success');
+
+  if (failures.length) {
+    resultsEl.innerHTML = `<div class="alert alert-error" style="margin-top:4px">
+      ${done} filled, ${failures.length} failed:<br>${failures.map(f => escHtml(f)).join('<br>')}
+    </div>`;
+  } else {
+    resultsEl.innerHTML = `<div class="alert alert-success" style="margin-top:4px">✓ All ${done} cover${done !== 1 ? 's' : ''} filled.</div>`;
+  }
 }
 
 function renderTable() {
@@ -480,9 +491,12 @@ function renderTable() {
     return;
   }
   wrap.innerHTML = `<table>
-    <thead><tr><th></th><th>Title</th><th>Type</th><th>Duration</th><th>Mandatory</th><th></th></tr></thead>
+    <thead><tr><th></th><th>Cover</th><th>Title</th><th>Type</th><th>Duration</th><th>Mandatory</th><th></th></tr></thead>
     <tbody>${courses.map(c => `<tr>
       <td style="font-size:22px;text-align:center;padding:8px 12px">${c.icon||'📖'}</td>
+      <td>${c.cover_image_url
+        ? `<img src="${c.cover_image_url}" style="width:48px;height:32px;object-fit:cover;border-radius:4px" title="Has a cover photo">`
+        : '<span class="badge badge-gray" style="font-size:11px">None</span>'}</td>
       <td>
         <div style="font-weight:600">${c.title}</div>
         <div style="font-size:12px;color:var(--text-muted);max-width:280px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${c.description||''}</div>
