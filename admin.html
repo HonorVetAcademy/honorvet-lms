@@ -41,6 +41,9 @@
 
       <!-- Courses tab -->
       <div id="tab-courses">
+        <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
+          <button class="btn btn-secondary btn-sm" id="fill-covers-btn" onclick="fillMissingCovers()">🖼 Fill Missing Covers</button>
+        </div>
         <div class="table-wrap" id="courses-table-wrap">
           <div class="spinner"></div>
         </div>
@@ -431,6 +434,43 @@ async function loadCourses() {
   Courses.invalidate();
   courses = await Courses.getAll();
   renderTable();
+}
+
+async function fillMissingCovers() {
+  const missing = courses.filter(c => !c.cover_image_url);
+  if (!missing.length) { toast('Every course already has a cover photo.', 'success'); return; }
+  if (!confirm(`Find an AI-picked cover photo for ${missing.length} course${missing.length > 1 ? 's' : ''} without one?`)) return;
+
+  const btn = document.getElementById('fill-covers-btn');
+  btn.disabled = true;
+  let done = 0, failed = 0;
+  const session = await sb().auth.getSession();
+  const token   = session?.data?.session?.access_token;
+
+  for (const c of missing) {
+    btn.textContent = `Filling ${done + failed + 1}/${missing.length}…`;
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/ai-course-autofill`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token || SUPABASE_ANON}` },
+        body: JSON.stringify({ title: c.title }),
+      });
+      const data = await res.json();
+      if (res.ok && data.cover_image_url) {
+        await Courses.upsert({ ...c, cover_image_url: data.cover_image_url });
+        done++;
+      } else {
+        failed++;
+      }
+    } catch (e) {
+      failed++;
+    }
+  }
+
+  btn.disabled = false;
+  btn.textContent = '🖼 Fill Missing Covers';
+  await loadCourses();
+  toast(`${done} cover${done !== 1 ? 's' : ''} filled${failed ? ` — ${failed} failed` : ''}.`, failed ? 'error' : 'success');
 }
 
 function renderTable() {
