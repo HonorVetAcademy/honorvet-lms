@@ -51,6 +51,7 @@
         <div class="tabs">
           <button class="tab-btn active" data-tab="tab-completion" onclick="switchTab(this)">By Employee</button>
           <button class="tab-btn" data-tab="tab-courses" onclick="switchTab(this)">By Course</button>
+          <button class="tab-btn" data-tab="tab-assignments" onclick="switchTab(this)">Assignments</button>
           <button class="tab-btn" data-tab="tab-compliance" onclick="switchTab(this)">Compliance</button>
         </div>
 
@@ -62,6 +63,11 @@
         <!-- By Course -->
         <div id="tab-courses" style="display:none">
           <div class="table-wrap" id="course-table-wrap"><div class="spinner"></div></div>
+        </div>
+
+        <!-- Assignments: one row per course assignment, with assigned/completed timestamps -->
+        <div id="tab-assignments" style="display:none">
+          <div class="table-wrap" id="assignments-table-wrap"><div class="spinner"></div></div>
         </div>
 
         <!-- Compliance -->
@@ -148,6 +154,7 @@ function filterReportRows() {
 
   renderUserTable();
   renderCourseTable();
+  renderAssignmentsTable();
   renderCompliance();
 })();
 
@@ -223,6 +230,32 @@ function renderCourseTable() {
   </table>`;
 }
 
+// One row per assignment: who, which course, when assigned, when
+// completed, current status/progress.
+function renderAssignmentsTable() {
+  const rows = [...allEnrollments].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+  if (!rows.length) {
+    document.getElementById('assignments-table-wrap').innerHTML = '<div class="empty-state"><p>No assignments yet.</p></div>';
+    return;
+  }
+  document.getElementById('assignments-table-wrap').innerHTML = `<table>
+    <thead><tr><th>Employee</th><th>Course</th><th>Assigned On</th><th>Status</th><th>Progress</th><th>Completed On</th></tr></thead>
+    <tbody>${rows.map(e => {
+      const u = e.users || allUsers.find(u => u.id === e.user_id) || {};
+      const c = allCourses.find(c => c.id === e.course_id) || {};
+      return `<tr>
+        <td><strong>${u.name || '—'}</strong><div style="font-size:11.5px;color:var(--text-muted)">${u.email || ''}</div></td>
+        <td>${c.icon || '📖'} ${c.title || e.course_id}</td>
+        <td style="color:var(--text-muted);white-space:nowrap">${fmtDateTime(e.created_at)}</td>
+        <td>${statusBadge(e.status)}</td>
+        <td style="color:var(--text-muted)">${e.progress || 0}%</td>
+        <td style="color:var(--text-muted);white-space:nowrap">${e.completed_at ? fmtDateTime(e.completed_at) : '—'}</td>
+      </tr>`;
+    }).join('')}</tbody>
+  </table>`;
+}
+
 function renderCompliance() {
   const mandatory = allCourses.filter(c => c.is_mandatory);
   if (!mandatory.length) {
@@ -255,16 +288,16 @@ function exportCSV() {
     byUser[e.user_id + '_' + e.course_id] = {
       name: u.name||'', email: u.email||'', role: u.role||'', department: u.department||'',
       course: c.title||e.course_id, mandatory: c.is_mandatory ? 'Yes':'No',
-      status: e.status, completedAt: e.completed_at||'',
+      status: e.status, assignedAt: e.created_at||'', completedAt: e.completed_at||'',
       quizScore: latestAttempt ? latestAttempt.score + '%' : '',
       quizPassed: latestAttempt ? (latestAttempt.passed ? 'Yes' : 'No') : '',
       quizAttempts: latestAttempt ? latestAttempt.attempt_number : '',
     };
   }
   const rows = Object.values(byUser);
-  const header = 'Name,Email,Role,Department,Course,Mandatory,Status,Completed At,Quiz Score,Quiz Passed,Quiz Attempts';
+  const header = 'Name,Email,Role,Department,Course,Mandatory,Status,Assigned At,Completed At,Quiz Score,Quiz Passed,Quiz Attempts';
   const csv = [header, ...rows.map(r =>
-    [r.name,r.email,r.role,r.department,r.course,r.mandatory,r.status,r.completedAt,r.quizScore,r.quizPassed,r.quizAttempts]
+    [r.name,r.email,r.role,r.department,r.course,r.mandatory,r.status,r.assignedAt,r.completedAt,r.quizScore,r.quizPassed,r.quizAttempts]
       .map(v => `"${String(v).replace(/"/g,'""')}"`)
       .join(',')
   )].join('\n');
