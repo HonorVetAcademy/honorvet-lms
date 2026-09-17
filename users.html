@@ -90,9 +90,13 @@
           </select>
         </div>
         <div class="form-group">
-          <label class="form-label">Department</label>
-          <input class="form-input" id="add-dept" placeholder="e.g. Operations">
+          <label class="form-label">Designation</label>
+          <select class="form-select" id="add-designation"></select>
         </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Department</label>
+        <input class="form-input" id="add-dept" placeholder="e.g. Operations">
       </div>
     </div>
     <div class="modal-footer">
@@ -112,8 +116,8 @@
     <div class="modal-body">
       <div id="import-alert"></div>
       <div class="alert alert-info" style="margin-bottom:14px">
-        Supports <strong>CSV</strong> and <strong>Excel (.xlsx)</strong>. Required columns: <code>name, email, role, department</code><br>
-        Roles: employee, manager, hr, trainer, admin
+        Supports <strong>CSV</strong> and <strong>Excel (.xlsx)</strong>. Columns: <code>name, email, role, department, designation</code><br>
+        Roles: employee, manager, hr, trainer, admin. Designation is optional — unrecognized values are imported as blank.
       </div>
       <a href="#" onclick="downloadTemplate()" class="btn btn-ghost btn-sm" style="margin-bottom:12px">⬇ Download CSV template</a>
       <div class="form-group">
@@ -148,6 +152,10 @@
           <option value="admin">Admin</option>
         </select>
       </div>
+      <div class="form-group">
+        <label class="form-label">Designation</label>
+        <select class="form-select" id="edit-designation"></select>
+      </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeModal('edit-modal')">Cancel</button>
@@ -165,6 +173,17 @@
 document.getElementById('app-name').textContent = APP_CONFIG.appName;
 
 let allUsers = [], csvRows = [];
+
+const DESIGNATIONS = [
+  'CIO', 'COO', 'CEO', 'President', 'VP', 'AVP', 'Director', 'Associate Director',
+  'Delivery Manager', 'IT Executive', 'HR Executive', 'Recruitment Manager',
+  'Assistant Manager', 'Lead Recruiter', 'Senior Recruiter', 'Recruiter',
+  'Trainee Recruiter', 'Proposal Writer', 'Business Development Executive',
+  'Business Development Manager', 'Presales Executive',
+];
+const designationOptionsHTML = '<option value="">— None —</option>' + DESIGNATIONS.map(d => `<option>${d}</option>`).join('');
+document.getElementById('add-designation').innerHTML  = designationOptionsHTML;
+document.getElementById('edit-designation').innerHTML = designationOptionsHTML;
 
 (async () => {
   const user = await requireAdmin();
@@ -211,15 +230,16 @@ function renderTable() {
   }
   wrap.innerHTML = `<table>
     <thead><tr>
-      <th>Name</th><th>Email</th><th>Role</th><th>Department</th><th>Joined</th><th></th>
+      <th>Name</th><th>Email</th><th>Role</th><th>Designation</th><th>Department</th><th>Joined</th><th></th>
     </tr></thead>
     <tbody>${rows.map(u => `<tr>
       <td><strong>${u.name || '—'}</strong></td>
       <td style="color:var(--text-muted)">${u.email}</td>
       <td>${roleBadge(u.role)}</td>
+      <td style="color:var(--text-muted)">${u.designation || '—'}</td>
       <td style="color:var(--text-muted)">${u.department || '—'}</td>
       <td style="color:var(--text-muted)">${fmtDate(u.created_at)}</td>
-      <td><button class="btn btn-ghost btn-sm" onclick="openEdit('${u.id}','${u.name||''}','${u.role||'employee'}')">Edit</button></td>
+      <td><button class="btn btn-ghost btn-sm" onclick='openEdit(${JSON.stringify({id:u.id,name:u.name||'',role:u.role||'employee',designation:u.designation||''}).replace(/'/g, "&#39;")})'>Edit</button></td>
     </tr>`).join('')}</tbody>
   </table>`;
 }
@@ -228,17 +248,18 @@ async function addUser() {
   const btn = document.getElementById('add-btn');
   const alert = document.getElementById('add-alert');
   alert.innerHTML = '';
-  const name  = document.getElementById('add-name').value.trim();
-  const email = document.getElementById('add-email').value.trim();
-  const pass  = document.getElementById('add-password').value;
-  const role  = document.getElementById('add-role').value;
-  const dept  = document.getElementById('add-dept').value.trim();
+  const name        = document.getElementById('add-name').value.trim();
+  const email       = document.getElementById('add-email').value.trim();
+  const pass        = document.getElementById('add-password').value;
+  const role        = document.getElementById('add-role').value;
+  const designation = document.getElementById('add-designation').value || null;
+  const dept        = document.getElementById('add-dept').value.trim();
   if (!name || !email || !pass) { alert.innerHTML = '<div class="alert alert-error">Name, email and password are required.</div>'; return; }
   btn.disabled = true; btn.textContent = 'Adding…';
   try {
-    const { data, error } = await sb().auth.signUp({ email, password: pass, options: { data: { name, role, department: dept || null } } });
+    const { data, error } = await sb().auth.signUp({ email, password: pass, options: { data: { name, role, department: dept || null, designation } } });
     if (error) throw error;
-    if (data.user) await Users.upsert(data.user.id, { email, name, role, department: dept || null });
+    if (data.user) await Users.upsert(data.user.id, { email, name, role, department: dept || null, designation });
     toast('User added!', 'success');
     closeModal('add-user-modal');
     await loadUsers();
@@ -261,11 +282,13 @@ document.getElementById('csv-file').onchange = function() {
       rows = data.map(r => {
         const norm = {};
         Object.keys(r).forEach(k => norm[k.toLowerCase().trim().replace(/\s+/g,'_')] = String(r[k]).trim());
+        const designation = norm.designation || '';
         return {
-          name:       norm.name || '',
-          email:      (norm.email || norm.email_address || norm['email address'] || '').toLowerCase().trim(),
-          role:       norm.role || 'employee',
-          department: norm.department || norm.division || '',
+          name:        norm.name || '',
+          email:       (norm.email || norm.email_address || norm['email address'] || '').toLowerCase().trim(),
+          role:        norm.role || 'employee',
+          department:  norm.department || norm.division || '',
+          designation: DESIGNATIONS.includes(designation) ? designation : '',
         };
       }).filter(r => r.email);
     } else {
@@ -275,7 +298,11 @@ document.getElementById('csv-file').onchange = function() {
         const vals = line.split(',').map(v => v.trim().replace(/^"|"$/g,''));
         const obj = {};
         header.forEach((h,i) => obj[h] = vals[i] || '');
-        return { name: obj.name||'', email: (obj.email||'').toLowerCase().trim(), role: obj.role||'employee', department: obj.department||'' };
+        const designation = obj.designation || '';
+        return {
+          name: obj.name||'', email: (obj.email||'').toLowerCase().trim(), role: obj.role||'employee',
+          department: obj.department||'', designation: DESIGNATIONS.includes(designation) ? designation : '',
+        };
       }).filter(r => r.email);
     }
     csvRows = rows;
@@ -370,26 +397,30 @@ async function importUsers() {
 }
 
 function downloadTemplate() {
-  const csv = 'name,email,role,department\nJohn Smith,john.smith@honorvet.com,employee,Operations\nJane Doe,jane.doe@honorvet.com,manager,HR';
+  const csv = 'name,email,role,department,designation\n' +
+    'John Smith,john.smith@honorvet.com,employee,Operations,Recruiter\n' +
+    'Jane Doe,jane.doe@honorvet.com,manager,HR,Recruitment Manager';
   const a = document.createElement('a');
   a.href = 'data:text/csv,' + encodeURIComponent(csv);
   a.download = 'users-template.csv';
   a.click();
 }
 
-function openEdit(id, name, role) {
-  document.getElementById('edit-uid').value = id;
-  document.getElementById('edit-modal-name').textContent = name || 'Edit User';
-  document.getElementById('edit-role').value = role;
+function openEdit(user) {
+  document.getElementById('edit-uid').value = user.id;
+  document.getElementById('edit-modal-name').textContent = user.name || 'Edit User';
+  document.getElementById('edit-role').value = user.role;
+  document.getElementById('edit-designation').value = user.designation || '';
   openModal('edit-modal');
 }
 
 async function saveRole() {
-  const id   = document.getElementById('edit-uid').value;
-  const role = document.getElementById('edit-role').value;
+  const id          = document.getElementById('edit-uid').value;
+  const role        = document.getElementById('edit-role').value;
+  const designation = document.getElementById('edit-designation').value || null;
   try {
-    await Users.updateRole(id, role);
-    toast('Role updated', 'success');
+    await Users.updateRoleAndDesignation(id, role, designation);
+    toast('User updated', 'success');
     closeModal('edit-modal');
     await loadUsers();
   } catch(e) { toast(e.message, 'error'); }

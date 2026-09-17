@@ -53,6 +53,7 @@ serve(async (req: Request) => {
               name: user.name,
               role: user.role || 'employee',
               department: user.department || '',
+              designation: user.designation || null,
               must_change_password: true,
             },
           })
@@ -67,6 +68,7 @@ serve(async (req: Request) => {
           name: user.name,
           role: user.role || 'employee',
           department: user.department || null,
+          designation: user.designation || null,
         }, { onConflict: 'email' })
 
         if (upsertErr) throw upsertErr

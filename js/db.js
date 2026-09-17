@@ -74,10 +74,10 @@ const Users = {
     if (error) throw error;
     return data;
   },
-  async updateRole(id, role) {
+  async updateRoleAndDesignation(id, role, designation) {
     const { data, error } = await sb()
       .from('users')
-      .update({ role })
+      .update({ role, designation })
       .eq('id', id)
       .select()
       .single();
