@@ -216,7 +216,9 @@ document.getElementById('edit-designation').innerHTML = designationOptionsHTML;
   renderUserChip(user);
   await loadUsers();
 
-  document.getElementById('search').oninput = renderTable;
+  const searchEl = document.getElementById('search');
+  searchEl.oninput  = renderTable;
+  searchEl.onchange = renderTable; // autofill/suggestion picks often skip the input event
   document.getElementById('filter-role').onchange = renderTable;
   document.getElementById('filter-dept').onchange = renderTable;
 })();
