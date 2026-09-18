@@ -51,6 +51,7 @@ serve(async (req: Request) => {
             email_confirm: true,
             user_metadata: {
               name: user.name,
+              real_name: user.real_name || null,
               role: user.role || 'employee',
               department: user.department || '',
               designation: user.designation || null,
@@ -66,6 +67,7 @@ serve(async (req: Request) => {
           id: userId,
           email,
           name: user.name,
+          real_name: user.real_name || null,
           role: user.role || 'employee',
           department: user.department || null,
           designation: user.designation || null,
