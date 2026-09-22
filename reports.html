@@ -40,8 +40,8 @@
     <div class="page">
       <!-- Summary stats -->
       <div class="stats-grid" id="stats-grid">
-        <div class="stat-card"><div class="stat-label">Total Users</div><div class="stat-value" id="s-users">—</div></div>
-        <div class="stat-card"><div class="stat-label">Total Courses</div><div class="stat-value" id="s-courses">—</div></div>
+        <div class="stat-card"><div class="stat-label" id="s-users-label">Total Users</div><div class="stat-value" id="s-users">—</div></div>
+        <div class="stat-card"><div class="stat-label" id="s-courses-label">Total Courses</div><div class="stat-value" id="s-courses">—</div></div>
         <div class="stat-card"><div class="stat-label">Completions</div><div class="stat-value" id="s-completed">—</div></div>
         <div class="stat-card"><div class="stat-label">Compliance Rate</div><div class="stat-value" id="s-compliance">—</div><div class="stat-sub">mandatory courses</div></div>
       </div>
@@ -133,10 +133,13 @@ function filterReportRows() {
   });
 }
 
+let isTrainerView = false;
+
 (async () => {
   const user = await requireAuth();
   if (!user) return;
-  if (!['admin','hr','manager'].includes(user.role)) { location.href = 'dashboard.html'; return; }
+  if (!['admin','hr','manager','trainer'].includes(user.role)) { location.href = 'dashboard.html'; return; }
+  isTrainerView = user.role === 'trainer';
   renderNav('reports', user);
   renderNotifBell(user.id, 'notif-bell-wrap');
   renderUserChip(user);
@@ -148,6 +151,17 @@ function filterReportRows() {
     Quiz.getAllAttempts(),
     Quiz.getAllQuestions(),
   ]);
+
+  // Trainers only see the courses/employees they personally assigned —
+  // RLS already limits what Enrollments.getAll() returns for them, but
+  // also excludes their own personal learner enrollment (if any) here.
+  if (isTrainerView) {
+    allEnrollments = allEnrollments.filter(e => e.assigned_by === user.id);
+    document.querySelector('.topbar-sub').textContent = 'Courses and employees you’ve assigned';
+    document.getElementById('s-users-label').textContent   = 'Employees Assigned';
+    document.getElementById('s-courses-label').textContent = 'Courses Assigned';
+  }
+
   quizSummaries = buildQuizSummaries(allQuizAttempts);
 
   // Stats
@@ -155,8 +169,10 @@ function filterReportRows() {
   const mandatory    = allCourses.filter(c => c.is_mandatory);
   const mandEnr      = allEnrollments.filter(e => mandatory.some(m => m.id === e.course_id));
   const compliance   = mandEnr.length ? Math.round(mandEnr.filter(e => e.status==='completed').length / mandEnr.length * 100) : 100;
-  document.getElementById('s-users').textContent      = allUsers.length;
-  document.getElementById('s-courses').textContent    = allCourses.length;
+  const scopedUserCount   = isTrainerView ? new Set(allEnrollments.map(e => e.user_id)).size : allUsers.length;
+  const scopedCourseCount = isTrainerView ? new Set(allEnrollments.map(e => e.course_id)).size : allCourses.length;
+  document.getElementById('s-users').textContent      = scopedUserCount;
+  document.getElementById('s-courses').textContent    = scopedCourseCount;
   document.getElementById('s-completed').textContent  = completed;
   document.getElementById('s-compliance').textContent = compliance + '%';
 

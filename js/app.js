@@ -58,6 +58,7 @@ function renderNav(activePage, user) {
   const role = user?.role || 'employee';
   const isAdmin = ['admin', 'hr'].includes(role);
   const isManager = role === 'manager';
+  const isTrainer = role === 'trainer';
 
   const nav = document.getElementById('nav-links');
   if (!nav) return;
@@ -68,8 +69,11 @@ function renderNav(activePage, user) {
     { href: 'paths.html',     icon: iconPath(),    label: 'Learning Paths', page: 'paths'     },
   ];
 
-  if (isAdmin || isManager) {
+  if (isAdmin || isManager || isTrainer) {
     items.push({ href: 'reports.html', icon: iconChart(), label: 'Reports', page: 'reports' });
+  }
+  if (isAdmin || isTrainer) {
+    items.push({ href: 'assign.html', icon: iconSettings(), label: 'Assign Courses', page: 'assign' });
   }
   if (isAdmin) {
     items.push(

@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Assign Courses — HonorVet Academy</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="icon" type="image/png" href="assets/logo-icon.png">
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <img class="logo-mark" src="assets/logo-icon.png" alt="HonorVet Technologies">
+      <div class="logo-text-wrap">
+        <div class="logo-text" id="app-name">HonorVet Academy</div>
+        <div class="logo-sub">Learning Platform</div>
+      </div>
+    </div>
+    <nav class="nav-section"><div class="nav-label">Menu</div><div id="nav-links"></div></nav>
+    <div class="sidebar-footer"><div class="user-chip" id="user-chip"></div></div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <div>
+        <div class="topbar-title">Assign Courses</div>
+        <div class="topbar-sub">Assign existing courses to employees</div>
+      </div>
+      <div class="topbar-actions" style="display:flex;align-items:center;gap:10px">
+        <div id="notif-bell-wrap"></div>
+      </div>
+    </header>
+
+    <div class="page">
+      <div class="card card-body" style="max-width:640px">
+        <div class="form-group">
+          <label class="form-label">Course</label>
+          <select class="form-select" id="pick-course" onchange="onCoursePick()">
+            <option value="">Select a course…</option>
+          </select>
+        </div>
+
+        <div id="assign-area" style="display:none">
+          <div style="margin:18px 0">
+            <label class="form-label">Assigned by you <span id="assigned-count" style="font-weight:400;color:var(--text-muted)"></span></label>
+            <div id="currently-assigned-list" style="max-height:160px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:4px">
+              <div style="padding:10px;color:var(--text-muted);font-size:13px">Loading…</div>
+            </div>
+          </div>
+
+          <div id="assign-alert"></div>
+
+          <div class="form-group">
+            <label class="form-label">Assign to</label>
+            <select class="form-select" id="assign-scope" onchange="onScopeChange()">
+              <option value="all">All employees</option>
+              <option value="department">Specific department</option>
+              <option value="role">Specific role</option>
+              <option value="users">Pick individual users</option>
+            </select>
+          </div>
+          <div class="form-group" id="dept-group" style="display:none">
+            <label class="form-label">Department</label>
+            <input class="form-input" id="assign-dept" placeholder="e.g. Operations">
+          </div>
+          <div class="form-group" id="role-group" style="display:none">
+            <label class="form-label">Role</label>
+            <select class="form-select" id="assign-role">
+              <option value="employee">Employee</option>
+              <option value="manager">Manager</option>
+              <option value="trainer">Trainer</option>
+              <option value="hr">HR</option>
+            </select>
+          </div>
+          <div id="users-group" style="display:none">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+              <label class="form-label" style="margin:0">Select users</label>
+              <div style="display:flex;gap:8px">
+                <button class="btn btn-ghost btn-sm" onclick="toggleAllUsers(true)">Select all</button>
+                <button class="btn btn-ghost btn-sm" onclick="toggleAllUsers(false)">Clear</button>
+              </div>
+            </div>
+            <input class="form-input" id="user-search" placeholder="Search by name or email…" oninput="filterUserList()" style="margin-bottom:8px">
+            <div id="user-checklist" style="max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:4px"></div>
+            <div id="user-selected-count" style="font-size:12px;color:var(--text-muted);margin-top:6px"></div>
+          </div>
+
+          <div style="margin-top:18px">
+            <button class="btn btn-primary" id="assign-btn" onclick="doAssign()">Assign</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="js/config.js"></script>
+<script src="js/db.js"></script>
+<script src="js/app.js"></script>
+<script>
+document.getElementById('app-name').textContent = APP_CONFIG.appName;
+
+let currentUser = null, allCourses = [], allUsersCache = [];
+
+(async () => {
+  currentUser = await requireAuth();
+  if (!currentUser) return;
+  if (!['admin', 'hr', 'trainer'].includes(currentUser.role)) { location.href = 'dashboard.html'; return; }
+  renderNav('assign', currentUser);
+  renderUserChip(currentUser);
+  renderNotifBell(currentUser.id, 'notif-bell-wrap');
+
+  allCourses = await Courses.getAll();
+  document.getElementById('pick-course').innerHTML =
+    '<option value="">Select a course…</option>' +
+    allCourses.map(c => `<option value="${c.id}">${c.icon || '📖'} ${escHtml(c.title)}</option>`).join('');
+})();
+
+async function onCoursePick() {
+  const courseId = document.getElementById('pick-course').value;
+  document.getElementById('assign-area').style.display = courseId ? '' : 'none';
+  if (!courseId) return;
+  document.getElementById('assign-alert').innerHTML = '';
+  document.getElementById('assign-btn').disabled = false;
+  document.getElementById('assign-btn').textContent = 'Assign';
+  await loadCurrentlyAssigned(courseId);
+}
+
+async function loadCurrentlyAssigned(courseId) {
+  const wrap = document.getElementById('currently-assigned-list');
+  wrap.innerHTML = '<div style="padding:10px;color:var(--text-muted);font-size:13px">Loading…</div>';
+  try {
+    const enrolled = await Enrollments.getForCourse(courseId);
+    renderCurrentlyAssignedList(courseId, enrolled);
+  } catch (e) {
+    wrap.innerHTML = `<div style="padding:10px;color:var(--danger);font-size:13px">Could not load: ${e.message}</div>`;
+  }
+}
+
+function renderCurrentlyAssignedList(courseId, enrolled) {
+  const wrap = document.getElementById('currently-assigned-list');
+  document.getElementById('assigned-count').textContent = enrolled.length ? `(${enrolled.length})` : '';
+  if (!enrolled.length) {
+    wrap.innerHTML = '<div style="padding:10px;color:var(--text-muted);font-size:13px">You haven\'t assigned anyone to this course yet.</div>';
+    return;
+  }
+  const statusLabels = { completed: 'Completed', in_progress: 'In progress', not_started: 'Not started' };
+  wrap.innerHTML = enrolled.map(e => `
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 8px">
+      <div style="min-width:0">
+        <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${e.users?.name || e.users?.email || '—'}</div>
+        <div style="font-size:11.5px;color:var(--text-muted)">${statusLabels[e.status] || e.status}</div>
+      </div>
+      <button class="btn btn-ghost btn-sm" style="color:var(--danger);flex-shrink:0" onclick="unassignUser('${courseId}','${e.user_id}','${escHtml(e.users?.name || e.users?.email || 'this user').replace(/'/g, "&#39;")}')">Remove</button>
+    </div>`).join('');
+}
+
+async function unassignUser(courseId, userId, label) {
+  if (!confirm(`Remove "${label}" from this course? Their progress will be lost.`)) return;
+  try {
+    await Enrollments.unassign(userId, courseId);
+    toast('Unassigned.', 'success');
+    await loadCurrentlyAssigned(courseId);
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+function onScopeChange() {
+  const v = document.getElementById('assign-scope').value;
+  document.getElementById('dept-group').style.display  = v === 'department' ? '' : 'none';
+  document.getElementById('role-group').style.display  = v === 'role'       ? '' : 'none';
+  document.getElementById('users-group').style.display = v === 'users'      ? '' : 'none';
+  if (v === 'users') buildUserChecklist();
+}
+
+async function buildUserChecklist() {
+  const list = document.getElementById('user-checklist');
+  list.innerHTML = '<div style="padding:12px;color:var(--text-muted);font-size:13px">Loading…</div>';
+  allUsersCache = await Users.getAll();
+  renderUserChecklist(allUsersCache);
+}
+
+function renderUserChecklist(users) {
+  const list = document.getElementById('user-checklist');
+  if (!users.length) { list.innerHTML = '<div style="padding:12px;font-size:13px;color:var(--text-muted)">No users found.</div>'; return; }
+  list.innerHTML = users.map(u => `
+    <label style="display:flex;align-items:center;gap:10px;padding:8px 10px;cursor:pointer;border-radius:6px">
+      <input type="checkbox" class="user-chk" data-id="${u.id}" style="width:15px;height:15px;accent-color:var(--brand)" onchange="updateSelectedCount()">
+      <div>
+        <div style="font-size:13px;font-weight:600">${u.name||'—'}</div>
+        <div style="font-size:11.5px;color:var(--text-muted)">${u.email} &middot; ${u.role} ${u.department ? '· '+u.department : ''}</div>
+      </div>
+    </label>`).join('');
+  updateSelectedCount();
+}
+
+function filterUserList() {
+  const q = document.getElementById('user-search').value.toLowerCase();
+  const filtered = allUsersCache.filter(u =>
+    (u.name||'').toLowerCase().includes(q) || (u.email||'').toLowerCase().includes(q)
+  );
+  renderUserChecklist(filtered);
+}
+
+function toggleAllUsers(checked) {
+  document.querySelectorAll('.user-chk').forEach(cb => cb.checked = checked);
+  updateSelectedCount();
+}
+
+function updateSelectedCount() {
+  const n = document.querySelectorAll('.user-chk:checked').length;
+  document.getElementById('user-selected-count').textContent = n ? `${n} user${n>1?'s':''} selected` : '';
+}
+
+async function doAssign() {
+  const btn      = document.getElementById('assign-btn');
+  const alertEl  = document.getElementById('assign-alert');
+  const courseId = document.getElementById('pick-course').value;
+  const scope    = document.getElementById('assign-scope').value;
+
+  btn.disabled = true; btn.textContent = 'Assigning…';
+  try {
+    let ids = [];
+    if (scope === 'users') {
+      ids = Array.from(document.querySelectorAll('.user-chk:checked')).map(cb => cb.dataset.id);
+      if (!ids.length) throw new Error('Select at least one user.');
+    } else {
+      let users = await Users.getAll();
+      if (scope === 'department') {
+        const dept = document.getElementById('assign-dept').value.trim();
+        if (!dept) throw new Error('Enter a department name.');
+        users = users.filter(u => u.department?.toLowerCase() === dept.toLowerCase());
+      } else if (scope === 'role') {
+        const role = document.getElementById('assign-role').value;
+        users = users.filter(u => u.role === role);
+      }
+      ids = users.map(u => u.id);
+      if (!ids.length) throw new Error('No users found for this filter.');
+    }
+    await Enrollments.bulkAssign(courseId, ids, currentUser.id);
+    alertEl.innerHTML = `<div class="alert alert-success">✓ Assigned to ${ids.length} user${ids.length>1?'s':''}.</div>`;
+    btn.textContent = 'Done ✓';
+    await loadCurrentlyAssigned(courseId);
+  } catch(e) {
+    alertEl.innerHTML = `<div class="alert alert-error">${e.message}</div>`;
+    btn.disabled = false; btn.textContent = 'Assign';
+  }
+}
+</script>
+</body>
+</html>
