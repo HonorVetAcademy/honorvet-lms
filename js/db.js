@@ -63,7 +63,7 @@ const Users = {
   async getAll() {
     const { data, error } = await sb()
       .from('users')
-      .select('*, enrollments(count)')
+      .select('*, enrollments!enrollments_user_id_fkey(count)')
       .order('name');
     if (error) throw error;
     return data;
@@ -173,7 +173,7 @@ const Enrollments = {
   async getForCourse(courseId) {
     const { data, error } = await sb()
       .from('enrollments')
-      .select('*, users(name, email, role, department)')
+      .select('*, users!enrollments_user_id_fkey(name, email, role, department)')
       .eq('course_id', courseId);
     if (error) throw error;
     return data || [];
@@ -182,7 +182,7 @@ const Enrollments = {
   async getAll() {
     const { data, error } = await sb()
       .from('enrollments')
-      .select('*, users(name, email, role, department)');
+      .select('*, users!enrollments_user_id_fkey(name, email, role, department)');
     if (error) throw error;
     return data || [];
   },
