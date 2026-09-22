@@ -241,18 +241,33 @@ const Enrollments = {
     }
   },
 
-  async bulkAssign(courseId, userIds) {
-    const rows = userIds.map(uid => ({ user_id: uid, course_id: courseId, status: 'not_started' }));
-    const { data, error } = await sb().from('enrollments').upsert(rows, { onConflict: 'user_id,course_id' }).select();
-    if (error) throw error;
-    try {
-      const course = await Courses.getById(courseId);
-      await Notifications.bulkCreate(userIds, 'course_assigned',
-        `New course assigned: ${course?.title || courseId}`,
-        `You have been enrolled in "${course?.title || courseId}". Log in to start learning.`,
-        { course_id: courseId, course_title: course?.title || courseId });
-    } catch(e) { console.warn('Notification error:', e.message); }
-    return data;
+  async bulkAssign(courseId, userIds, assignedBy = null) {
+    // Split into new vs already-enrolled: an upsert would blindly reset
+    // status/progress back to 'not_started' for anyone who already
+    // completed this course, so existing rows only get assigned_by updated.
+    const { data: existing, error: existingErr } = await sb().from('enrollments').select('user_id').eq('course_id', courseId).in('user_id', userIds);
+    if (existingErr) throw existingErr;
+    const existingIds = new Set((existing || []).map(e => e.user_id));
+    const newIds = userIds.filter(uid => !existingIds.has(uid));
+
+    if (newIds.length) {
+      const rows = newIds.map(uid => ({ user_id: uid, course_id: courseId, status: 'not_started', assigned_by: assignedBy }));
+      const { error } = await sb().from('enrollments').insert(rows);
+      if (error) throw error;
+    }
+    if (existingIds.size) {
+      const { error } = await sb().from('enrollments').update({ assigned_by: assignedBy }).eq('course_id', courseId).in('user_id', Array.from(existingIds));
+      if (error) throw error;
+    }
+    if (newIds.length) {
+      try {
+        const course = await Courses.getById(courseId);
+        await Notifications.bulkCreate(newIds, 'course_assigned',
+          `New course assigned: ${course?.title || courseId}`,
+          `You have been enrolled in "${course?.title || courseId}". Log in to start learning.`,
+          { course_id: courseId, course_title: course?.title || courseId });
+      } catch(e) { console.warn('Notification error:', e.message); }
+    }
   },
 };
 
@@ -339,6 +354,13 @@ const Quiz = {
   // Admin/hr/manager only (per RLS) — every attempt by every user, for reporting.
   async getAllAttempts() {
     const { data, error } = await sb().from('quiz_attempts').select('*').order('attempt_number');
+    if (error) throw error;
+    return data || [];
+  },
+  // Every question across every course, for cross-referencing an attempt's
+  // raw `answers` against `correct_answers` in reporting.
+  async getAllQuestions() {
+    const { data, error } = await sb().from('quiz_questions').select('*').order('position');
     if (error) throw error;
     return data || [];
   },

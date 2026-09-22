@@ -372,6 +372,7 @@
 document.getElementById('app-name').textContent = APP_CONFIG.appName;
 
 let courses = [];
+let currentAdminUser = null;
 
 let allUsersCache = [];
 
@@ -425,6 +426,7 @@ function updateSelectedCount() {
 (async () => {
   const user = await requireAdmin();
   if (!user) return;
+  currentAdminUser = user;
   renderNav('admin', user);
   renderUserChip(user);
   renderNotifBell(user.id, 'notif-bell-wrap');
@@ -754,7 +756,7 @@ async function doAssign() {
       ids = users.map(u => u.id);
       if (!ids.length) throw new Error('No users found for this filter.');
     }
-    await Enrollments.bulkAssign(courseId, ids);
+    await Enrollments.bulkAssign(courseId, ids, currentAdminUser?.id || null);
     alertEl.innerHTML = `<div class="alert alert-success">✓ Assigned to ${ids.length} user${ids.length>1?'s':''}.</div>`;
     btn.textContent = 'Done ✓';
     await loadCurrentlyAssigned(courseId);

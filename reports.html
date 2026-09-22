@@ -49,14 +49,21 @@
       <!-- Tabs -->
       <div id="tabs-wrap">
         <div class="tabs">
-          <button class="tab-btn active" data-tab="tab-completion" onclick="switchTab(this)">By Employee</button>
+          <button class="tab-btn active" data-tab="tab-full" onclick="switchTab(this)">Full Report</button>
+          <button class="tab-btn" data-tab="tab-completion" onclick="switchTab(this)">By Employee</button>
           <button class="tab-btn" data-tab="tab-courses" onclick="switchTab(this)">By Course</button>
           <button class="tab-btn" data-tab="tab-assignments" onclick="switchTab(this)">Assignments</button>
           <button class="tab-btn" data-tab="tab-compliance" onclick="switchTab(this)">Compliance</button>
         </div>
 
+        <!-- Full Report: one row per assignment with assigner, timing, and
+             quiz score/wrong-question detail — the single comprehensive view. -->
+        <div id="tab-full">
+          <div class="table-wrap" id="full-report-wrap"><div class="spinner"></div></div>
+        </div>
+
         <!-- By Employee -->
-        <div id="tab-completion">
+        <div id="tab-completion" style="display:none">
           <div class="table-wrap" id="user-table-wrap"><div class="spinner"></div></div>
         </div>
 
@@ -86,7 +93,7 @@
 <script>
 document.getElementById('app-name').textContent = APP_CONFIG.appName;
 
-let allEnrollments = [], allUsers = [], allCourses = [], allQuizAttempts = [], quizSummaries = {};
+let allEnrollments = [], allUsers = [], allCourses = [], allQuizAttempts = [], allQuizQuestions = [], quizSummaries = {};
 
 // Groups every quiz attempt by user, then reduces to each course's latest
 // attempt (highest attempt_number) so retries don't get double-counted.
@@ -134,11 +141,12 @@ function filterReportRows() {
   renderNotifBell(user.id, 'notif-bell-wrap');
   renderUserChip(user);
 
-  [allEnrollments, allUsers, allCourses, allQuizAttempts] = await Promise.all([
+  [allEnrollments, allUsers, allCourses, allQuizAttempts, allQuizQuestions] = await Promise.all([
     Enrollments.getAll(),
     Users.getAll(),
     Courses.getAll(),
     Quiz.getAllAttempts(),
+    Quiz.getAllQuestions(),
   ]);
   quizSummaries = buildQuizSummaries(allQuizAttempts);
 
@@ -152,11 +160,104 @@ function filterReportRows() {
   document.getElementById('s-completed').textContent  = completed;
   document.getElementById('s-compliance').textContent = compliance + '%';
 
+  renderFullReportTable();
   renderUserTable();
   renderCourseTable();
   renderAssignmentsTable();
   renderCompliance();
 })();
+
+// ── Full Report ──────────────────────────────────────────────
+// Pulls the latest quiz attempt for a user+course (same "latest wins"
+// logic buildQuizSummaries uses) so retries don't get double-counted.
+function getLatestAttempt(userId, courseId) {
+  return quizSummaries[userId]?.byCourse?.[courseId] || null;
+}
+
+// Cross-references the latest attempt's raw selected-option answers
+// against each question's correct_answers to find exactly which
+// questions were missed (quiz_attempts only stores what was selected,
+// not a per-question correct/incorrect flag).
+function computeScoreDetail(userId, courseId) {
+  const attempt = getLatestAttempt(userId, courseId);
+  if (!attempt) return null;
+  const questions = allQuizQuestions.filter(q => q.course_id === courseId);
+  const wrongQuestions = questions.filter(q => {
+    const selected = (attempt.answers && attempt.answers[q.id]) || [];
+    const correct  = q.correct_answers || [];
+    return JSON.stringify([...selected].sort()) !== JSON.stringify([...correct].sort());
+  });
+  return {
+    score: attempt.score, passed: attempt.passed, attemptNumber: attempt.attempt_number,
+    total: questions.length, correct: questions.length - wrongQuestions.length,
+    wrongQuestions,
+  };
+}
+
+function fmtDuration(ms) {
+  if (ms == null || ms < 0) return '—';
+  const mins = Math.round(ms / 60000);
+  if (mins < 60) return `${mins}m`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ${mins % 60}m`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ${hrs % 24}h`;
+}
+
+function toggleWrongAnswers(rowId) {
+  const el = document.getElementById(rowId);
+  if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
+}
+
+function renderFullReportTable() {
+  const rows = [...allEnrollments].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+  if (!rows.length) {
+    document.getElementById('full-report-wrap').innerHTML = '<div class="empty-state"><p>No assignments yet.</p></div>';
+    return;
+  }
+  document.getElementById('full-report-wrap').innerHTML = `<table>
+    <thead><tr>
+      <th>Employee</th><th>Course</th><th>Assigned By</th><th>Assigned On</th>
+      <th>Completed On</th><th>Time Taken</th><th>Score</th><th>Status</th><th></th>
+    </tr></thead>
+    <tbody>${rows.map((e, i) => {
+      const u = e.users || allUsers.find(u2 => u2.id === e.user_id) || {};
+      const c = allCourses.find(c2 => c2.id === e.course_id);
+      const courseLabel = c ? `${c.icon || '📖'} ${c.title}` : `<span style="color:var(--danger)">⚠ Deleted course</span>`;
+      const assigner = e.assigned_by ? allUsers.find(u2 => u2.id === e.assigned_by) : null;
+      const assignedByLabel = assigner ? (assigner.name || assigner.email) : '<span style="color:var(--text-dim)">—</span>';
+      const detail = computeScoreDetail(e.user_id, e.course_id);
+      const scoreLabel = detail ? `${detail.correct}/${detail.total} · ${detail.score}%${detail.passed ? '' : ' ⚠'}` : '—';
+      const timeTaken = (e.completed_at && e.created_at) ? fmtDuration(new Date(e.completed_at) - new Date(e.created_at)) : '—';
+      const rowId = `fr-${i}`;
+      const wrongCount = detail ? detail.wrongQuestions.length : 0;
+      const toggleCell = wrongCount
+        ? `<button class="btn btn-ghost btn-sm" onclick="toggleWrongAnswers('${rowId}')">View ${wrongCount} wrong</button>`
+        : (detail ? '<span style="color:var(--text-dim);font-size:12px">All correct</span>' : '');
+      const detailRow = wrongCount
+        ? `<tr id="${rowId}" style="display:none"><td colspan="9" style="background:var(--bg-alt,#f8f8f8)">
+             <div style="padding:10px 6px"><strong style="font-size:12.5px">Missed questions (attempt ${detail.attemptNumber}):</strong>
+               <ol style="margin:6px 0 0;padding-left:20px;font-size:12.5px;color:var(--text-muted)">
+                 ${detail.wrongQuestions.map(q => `<li style="margin-bottom:4px">${escHtml(q.question_text)}</li>`).join('')}
+               </ol>
+             </div>
+           </td></tr>`
+        : '';
+      return `<tr>
+        <td><strong>${u.name || '—'}</strong><div style="font-size:11.5px;color:var(--text-muted)">${u.email || ''}</div></td>
+        <td>${courseLabel}</td>
+        <td style="color:var(--text-muted)">${assignedByLabel}</td>
+        <td style="color:var(--text-muted);white-space:nowrap">${fmtDateTime(e.created_at)}</td>
+        <td style="color:var(--text-muted);white-space:nowrap">${e.completed_at ? fmtDateTime(e.completed_at) : '—'}</td>
+        <td style="color:var(--text-muted)">${timeTaken}</td>
+        <td>${scoreLabel}</td>
+        <td>${statusBadge(e.status)}</td>
+        <td>${toggleCell}</td>
+      </tr>${detailRow}`;
+    }).join('')}</tbody>
+  </table>`;
+}
 
 function renderUserTable() {
   // Group enrollments by user
@@ -264,6 +365,7 @@ async function removeAssignment(userId, courseId, label) {
   try {
     await Enrollments.unassign(userId, courseId);
     allEnrollments = allEnrollments.filter(e => !(e.user_id === userId && e.course_id === courseId));
+    renderFullReportTable();
     renderUserTable();
     renderCourseTable();
     renderAssignmentsTable();
@@ -299,20 +401,25 @@ function exportCSV() {
   for (const e of allEnrollments) {
     const u = allUsers.find(u => u.id === e.user_id) || {};
     const c = allCourses.find(c => c.id === e.course_id) || {};
-    const latestAttempt = quizSummaries[e.user_id]?.byCourse?.[e.course_id];
+    const assigner = e.assigned_by ? allUsers.find(u2 => u2.id === e.assigned_by) : null;
+    const detail = computeScoreDetail(e.user_id, e.course_id);
+    const timeTaken = (e.completed_at && e.created_at) ? fmtDuration(new Date(e.completed_at) - new Date(e.created_at)) : '';
     byUser[e.user_id + '_' + e.course_id] = {
       name: u.name||'', email: u.email||'', role: u.role||'', department: u.department||'',
       course: c.title||e.course_id, mandatory: c.is_mandatory ? 'Yes':'No',
-      status: e.status, assignedAt: e.created_at||'', completedAt: e.completed_at||'',
-      quizScore: latestAttempt ? latestAttempt.score + '%' : '',
-      quizPassed: latestAttempt ? (latestAttempt.passed ? 'Yes' : 'No') : '',
-      quizAttempts: latestAttempt ? latestAttempt.attempt_number : '',
+      assignedBy: assigner ? (assigner.name || assigner.email) : '',
+      status: e.status, assignedAt: e.created_at||'', completedAt: e.completed_at||'', timeTaken,
+      quizScore: detail ? detail.score + '%' : '',
+      quizCorrect: detail ? `${detail.correct}/${detail.total}` : '',
+      quizPassed: detail ? (detail.passed ? 'Yes' : 'No') : '',
+      quizAttempts: detail ? detail.attemptNumber : '',
+      wrongQuestions: detail ? detail.wrongQuestions.map(q => q.question_text).join(' | ') : '',
     };
   }
   const rows = Object.values(byUser);
-  const header = 'Name,Email,Role,Department,Course,Mandatory,Status,Assigned At,Completed At,Quiz Score,Quiz Passed,Quiz Attempts';
+  const header = 'Name,Email,Role,Department,Course,Mandatory,Assigned By,Status,Assigned At,Completed At,Time Taken,Quiz Score,Correct/Total,Quiz Passed,Quiz Attempts,Wrong Questions';
   const csv = [header, ...rows.map(r =>
-    [r.name,r.email,r.role,r.department,r.course,r.mandatory,r.status,r.assignedAt,r.completedAt,r.quizScore,r.quizPassed,r.quizAttempts]
+    [r.name,r.email,r.role,r.department,r.course,r.mandatory,r.assignedBy,r.status,r.assignedAt,r.completedAt,r.timeTaken,r.quizScore,r.quizCorrect,r.quizPassed,r.quizAttempts,r.wrongQuestions]
       .map(v => `"${String(v).replace(/"/g,'""')}"`)
       .join(',')
   )].join('\n');
