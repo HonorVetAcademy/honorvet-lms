@@ -289,7 +289,7 @@ async function renderDashCharts(user, personalEnrollments) {
     if (trendChart) trendChart.destroy();
     trendChart = new Chart(document.getElementById('trend-chart'), {
       type: 'bar',
-      data: { labels: b.labels, datasets: [{ label: 'Completions', data: b.counts, backgroundColor: '#EE1A0F', borderRadius: 6, maxBarThickness: 38 }] },
+      data: { labels: b.labels, datasets: [{ label: 'Completions', data: b.counts, backgroundColor: '#0A7C4E', borderRadius: 6, maxBarThickness: 38 }] },
       options: { maintainAspectRatio: false, plugins: { legend: { display: false } },
         scales: { y: { beginAtZero: true, ticks: { precision: 0 } }, x: { grid: { display: false } } } }
     });
