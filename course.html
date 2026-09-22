@@ -132,10 +132,11 @@ let currentUser = null, enrollment = null, course = null;
     `<span class="chm">${course.icon || '📖'} ${contentTypeLabel(course.content_type)}</span>` +
     (course.is_mandatory ? `<span class="chm chm-mand">⚠ Mandatory</span>` : '');
 
-  try { await Enrollments.enroll(currentUser.id, courseId); } catch {}
-
   const enrs = await Enrollments.getMine(currentUser.id);
   enrollment  = enrs.find(e => e.course_id === courseId);
+  if (!enrollment) {
+    try { enrollment = await Enrollments.enroll(currentUser.id, courseId); } catch {}
+  }
 
   updateProgressUI();
 
