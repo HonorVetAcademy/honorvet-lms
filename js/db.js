@@ -77,16 +77,6 @@ const Users = {
     if (error) throw error;
     return data;
   },
-  async updateRoleAndDesignation(id, role, designation, realName) {
-    const { data, error } = await sb()
-      .from('users')
-      .update({ role, designation, real_name: realName ?? null })
-      .eq('id', id)
-      .select()
-      .single();
-    if (error) throw error;
-    return data;
-  },
   async clearMustChangePassword(id) {
     const { error } = await sb().from('users').update({ must_change_password: false }).eq('id', id);
     if (error) throw error;

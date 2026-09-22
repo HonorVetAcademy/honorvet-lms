@@ -148,6 +148,10 @@
     <div class="modal-body">
       <input type="hidden" id="edit-uid">
       <div class="form-group">
+        <label class="form-label">Alias name <span style="font-weight:400;color:var(--text-muted)">(work identity — used everywhere in the app)</span></label>
+        <input class="form-input" id="edit-name" placeholder="First Last">
+      </div>
+      <div class="form-group">
         <label class="form-label">Real name <span style="font-weight:400;color:var(--text-muted)">(optional)</span></label>
         <input class="form-input" id="edit-real-name" placeholder="Legal / real name">
       </div>
@@ -164,6 +168,10 @@
       <div class="form-group">
         <label class="form-label">Designation</label>
         <select class="form-select" id="edit-designation"></select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Department</label>
+        <input class="form-input" id="edit-department" placeholder="e.g. Operations">
       </div>
     </div>
     <div class="modal-footer">
@@ -274,7 +282,7 @@ function renderTable() {
       <td style="color:var(--text-muted)">${u.designation || '—'}</td>
       <td style="color:var(--text-muted)">${u.department || '—'}</td>
       <td style="color:var(--text-muted)">${fmtDate(u.created_at)}</td>
-      <td><button class="btn btn-ghost btn-sm" onclick='openEdit(${JSON.stringify({id:u.id,name:u.name||'',real_name:u.real_name||'',role:u.role||'employee',designation:u.designation||''}).replace(/'/g, "&#39;")})'>Edit</button></td>
+      <td><button class="btn btn-ghost btn-sm" onclick='openEdit(${JSON.stringify({id:u.id,name:u.name||'',real_name:u.real_name||'',role:u.role||'employee',designation:u.designation||'',department:u.department||''}).replace(/'/g, "&#39;")})'>Edit</button></td>
     </tr>`).join('')}</tbody>
   </table>`;
 }
@@ -446,19 +454,24 @@ function downloadTemplate() {
 function openEdit(user) {
   document.getElementById('edit-uid').value = user.id;
   document.getElementById('edit-modal-name').textContent = user.name || 'Edit User';
+  document.getElementById('edit-name').value = user.name || '';
   document.getElementById('edit-real-name').value = user.real_name || '';
   document.getElementById('edit-role').value = user.role;
   document.getElementById('edit-designation').value = user.designation || '';
+  document.getElementById('edit-department').value = user.department || '';
   openModal('edit-modal');
 }
 
 async function saveRole() {
   const id          = document.getElementById('edit-uid').value;
+  const name        = document.getElementById('edit-name').value.trim();
   const realName    = document.getElementById('edit-real-name').value.trim();
   const role        = document.getElementById('edit-role').value;
   const designation = document.getElementById('edit-designation').value || null;
+  const department  = document.getElementById('edit-department').value.trim();
+  if (!name) { toast('Alias name is required.', 'error'); return; }
   try {
-    await Users.updateRoleAndDesignation(id, role, designation, realName || null);
+    await Users.upsert(id, { name, real_name: realName || null, role, designation, department: department || null });
     toast('User updated', 'success');
     closeModal('edit-modal');
     await loadUsers();
