@@ -77,6 +77,19 @@ const Users = {
     if (error) throw error;
     return data;
   },
+  // For editing an existing user — a plain UPDATE, unlike upsert() which
+  // needs every NOT NULL column (like email) in the payload since it can
+  // also insert a fresh row.
+  async update(id, fields) {
+    const { data, error } = await sb()
+      .from('users')
+      .update(fields)
+      .eq('id', id)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  },
   async clearMustChangePassword(id) {
     const { error } = await sb().from('users').update({ must_change_password: false }).eq('id', id);
     if (error) throw error;

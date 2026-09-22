@@ -471,7 +471,7 @@ async function saveRole() {
   const department  = document.getElementById('edit-department').value.trim();
   if (!name) { toast('Alias name is required.', 'error'); return; }
   try {
-    await Users.upsert(id, { name, real_name: realName || null, role, designation, department: department || null });
+    await Users.update(id, { name, real_name: realName || null, role, designation, department: department || null });
     toast('User updated', 'success');
     closeModal('edit-modal');
     await loadUsers();
