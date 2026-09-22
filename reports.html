@@ -182,10 +182,17 @@ function computeScoreDetail(userId, courseId) {
   const attempt = getLatestAttempt(userId, courseId);
   if (!attempt) return null;
   const questions = allQuizQuestions.filter(q => q.course_id === courseId);
+  const optionLabels = (q, indexes) => indexes.length
+    ? indexes.map(i => q.options?.[i]).filter(v => v != null).join('; ')
+    : '(no answer selected)';
   const wrongQuestions = questions.filter(q => {
     const selected = (attempt.answers && attempt.answers[q.id]) || [];
     const correct  = q.correct_answers || [];
     return JSON.stringify([...selected].sort()) !== JSON.stringify([...correct].sort());
+  }).map(q => {
+    const selected = (attempt.answers && attempt.answers[q.id]) || [];
+    const correct  = q.correct_answers || [];
+    return { ...q, theirAnswer: optionLabels(q, selected), correctAnswer: optionLabels(q, correct) };
   });
   return {
     score: attempt.score, passed: attempt.passed, attemptNumber: attempt.attempt_number,
@@ -238,8 +245,12 @@ function renderFullReportTable() {
       const detailRow = wrongCount
         ? `<tr id="${rowId}" style="display:none"><td colspan="9" style="background:var(--bg-alt,#f8f8f8)">
              <div style="padding:10px 6px"><strong style="font-size:12.5px">Missed questions (attempt ${detail.attemptNumber}):</strong>
-               <ol style="margin:6px 0 0;padding-left:20px;font-size:12.5px;color:var(--text-muted)">
-                 ${detail.wrongQuestions.map(q => `<li style="margin-bottom:4px">${escHtml(q.question_text)}</li>`).join('')}
+               <ol style="margin:8px 0 0;padding-left:20px;font-size:12.5px;color:var(--text-muted)">
+                 ${detail.wrongQuestions.map(q => `<li style="margin-bottom:10px">
+                   <div style="color:var(--text-strong,#111)">${escHtml(q.question_text)}</div>
+                   <div style="margin-top:2px"><span style="color:var(--danger)">Their answer:</span> ${escHtml(q.theirAnswer)}</div>
+                   <div><span style="color:var(--success)">Correct answer:</span> ${escHtml(q.correctAnswer)}</div>
+                 </li>`).join('')}
                </ol>
              </div>
            </td></tr>`
@@ -413,11 +424,11 @@ function exportCSV() {
       quizCorrect: detail ? `${detail.correct}/${detail.total}` : '',
       quizPassed: detail ? (detail.passed ? 'Yes' : 'No') : '',
       quizAttempts: detail ? detail.attemptNumber : '',
-      wrongQuestions: detail ? detail.wrongQuestions.map(q => q.question_text).join(' | ') : '',
+      wrongQuestions: detail ? detail.wrongQuestions.map(q => `${q.question_text} [answered: ${q.theirAnswer}; correct: ${q.correctAnswer}]`).join(' | ') : '',
     };
   }
   const rows = Object.values(byUser);
-  const header = 'Name,Email,Role,Department,Course,Mandatory,Assigned By,Status,Assigned At,Completed At,Time Taken,Quiz Score,Correct/Total,Quiz Passed,Quiz Attempts,Wrong Questions';
+  const header = 'Name,Email,Role,Department,Course,Mandatory,Assigned By,Status,Assigned At,Completed At,Time Taken,Quiz Score,Correct/Total,Quiz Passed,Quiz Attempts,Wrong Questions (with their answer and correct answer)';
   const csv = [header, ...rows.map(r =>
     [r.name,r.email,r.role,r.department,r.course,r.mandatory,r.assignedBy,r.status,r.assignedAt,r.completedAt,r.timeTaken,r.quizScore,r.quizCorrect,r.quizPassed,r.quizAttempts,r.wrongQuestions]
       .map(v => `"${String(v).replace(/"/g,'""')}"`)
