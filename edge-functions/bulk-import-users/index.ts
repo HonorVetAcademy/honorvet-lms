@@ -47,7 +47,7 @@ serve(async (req: Request) => {
         } else {
           const { data, error } = await sbAdmin.auth.admin.createUser({
             email,
-            password: 'HonorVet@2024!',
+            password: 'Honorvet@2026',
             email_confirm: true,
             user_metadata: {
               name: user.name,
