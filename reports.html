@@ -227,6 +227,23 @@ function fmtDuration(ms) {
   return `${days}d ${hrs % 24}h`;
 }
 
+async function resetQuiz(userId, courseId, label) {
+  if (!confirm(`Reset quiz attempts for "${label}"?\n\nAll their attempts are deleted and they get a fresh set. If the course was completed it goes back to In Progress.`)) return;
+  try {
+    const deleted = await Quiz.resetAttempts(userId, courseId);
+    if (!deleted) { toast('Nothing was reset — no attempts found, or you don’t have permission.', 'error'); return; }
+    allQuizAttempts = allQuizAttempts.filter(a => !(a.user_id === userId && a.course_id === courseId));
+    quizSummaries = buildQuizSummaries(allQuizAttempts);
+    const enr = allEnrollments.find(e => e.user_id === userId && e.course_id === courseId);
+    if (enr && enr.status === 'completed') { enr.status = 'in_progress'; enr.progress = 10; enr.completed_at = null; }
+    renderFullReportTable();
+    renderUserTable();
+    renderCourseTable();
+    renderAssignmentsTable();
+    toast('Quiz attempts reset.', 'success');
+  } catch (e) { toast(e.message, 'error'); }
+}
+
 function toggleWrongAnswers(rowId) {
   const el = document.getElementById(rowId);
   if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
@@ -255,9 +272,14 @@ function renderFullReportTable() {
       const timeTaken = (e.completed_at && e.created_at) ? fmtDuration(new Date(e.completed_at) - new Date(e.created_at)) : '—';
       const rowId = `fr-${i}`;
       const wrongCount = detail ? detail.wrongQuestions.length : 0;
-      const toggleCell = wrongCount
+      const resetLabel = `${u.name || u.email || 'this user'} — ${c ? c.title : e.course_id}`;
+      const viewPart = wrongCount
         ? `<button class="btn btn-ghost btn-sm" onclick="toggleWrongAnswers('${rowId}')">View ${wrongCount} wrong</button>`
         : (detail ? '<span style="color:var(--text-dim);font-size:12px">All correct</span>' : '');
+      const resetPart = detail
+        ? `<button class="btn btn-ghost btn-sm" style="color:var(--danger)" onclick="resetQuiz('${e.user_id}','${e.course_id}','${escHtml(resetLabel).replace(/'/g, "&#39;")}')">Reset attempts</button>`
+        : '';
+      const toggleCell = `<div style="display:flex;gap:4px;flex-wrap:wrap">${viewPart}${resetPart}</div>`;
       const detailRow = wrongCount
         ? `<tr id="${rowId}" style="display:none"><td colspan="9" style="background:var(--bg-alt,#f8f8f8)">
              <div style="padding:10px 6px"><strong style="font-size:12.5px">Missed questions (attempt ${detail.attemptNumber}):</strong>

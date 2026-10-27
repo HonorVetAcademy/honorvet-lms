@@ -360,6 +360,21 @@ const Quiz = {
     if (error) throw error;
     return data || [];
   },
+  // Wipes a learner's attempts for a course so they get a fresh set. If the
+  // course was already completed it goes back to in-progress, otherwise the
+  // quiz would stay hidden. Returns how many attempts were deleted.
+  async resetAttempts(userId, courseId) {
+    const { data, error } = await sb().from('quiz_attempts').delete().eq('user_id', userId).eq('course_id', courseId).select();
+    if (error) throw error;
+    const deleted = (data || []).length;
+    if (deleted) {
+      const { error: enrErr } = await sb().from('enrollments')
+        .update({ status: 'in_progress', progress: 10, completed_at: null })
+        .eq('user_id', userId).eq('course_id', courseId).eq('status', 'completed');
+      if (enrErr) throw enrErr;
+    }
+    return deleted;
+  },
   // Every question across every course, for cross-referencing an attempt's
   // raw `answers` against `correct_answers` in reporting.
   async getAllQuestions() {
