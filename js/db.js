@@ -332,12 +332,13 @@ const Quiz = {
     if (error) throw error;
   },
   async getSettings(courseId) {
-    const { data, error } = await sb().from('courses').select('quiz_passing_score, quiz_max_attempts').eq('id', courseId).single();
+    // select('*') so quizzes keep working even before the timer column exists
+    const { data, error } = await sb().from('courses').select('*').eq('id', courseId).single();
     if (error) throw error;
     return data;
   },
-  async updateSettings(courseId, { quiz_passing_score, quiz_max_attempts }) {
-    const { error } = await sb().from('courses').update({ quiz_passing_score, quiz_max_attempts }).eq('id', courseId);
+  async updateSettings(courseId, { quiz_passing_score, quiz_max_attempts, quiz_minutes_per_question }) {
+    const { error } = await sb().from('courses').update({ quiz_passing_score, quiz_max_attempts, quiz_minutes_per_question }).eq('id', courseId);
     if (error) throw error;
   },
   async getAttempts(userId, courseId) {

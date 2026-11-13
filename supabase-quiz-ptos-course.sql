@@ -1,7 +1,9 @@
--- PTO-only course quiz for the W2 Benefits course (80% pass, 2 attempts).
+-- PTO-only course quiz for the W2 Benefits course (80% pass, 2 attempts, 1 minute per question).
 -- Run in the Supabase SQL Editor. Safe to re-run: it replaces the course's
 -- existing quiz questions. The course is found by title; if the title doesn't
 -- match exactly one course, it stops with a message instead of guessing.
+
+alter table courses add column if not exists quiz_minutes_per_question integer not null default 0;
 
 do $$
 declare
@@ -174,6 +176,6 @@ begin
     );
   end loop;
 
-  update courses set quiz_passing_score = 80, quiz_max_attempts = 2 where id = cid;
+  update courses set quiz_passing_score = 80, quiz_max_attempts = 2, quiz_minutes_per_question = 1 where id = cid;
   raise notice 'Loaded % questions into course %', jsonb_array_length(qs), cid;
 end $$;

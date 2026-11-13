@@ -170,8 +170,50 @@ let currentUser = null, enrollment = null, course = null;
 
 // ── Quiz flow ────────────────────────────────────────────────────
 let quizQuestions = [];
-let quizSettings = { quiz_passing_score: 70, quiz_max_attempts: 3 };
+let quizSettings = { quiz_passing_score: 70, quiz_max_attempts: 3, quiz_minutes_per_question: 0 };
 let quizAttempts = [];
+let quizTimerId = null;
+let quizTimedOut = false;
+
+// Total time allowed = minutes per question × number of questions (0 = no timer)
+function quizTimeLimitSec() {
+  const m = Number(quizSettings.quiz_minutes_per_question) || 0;
+  return m > 0 ? Math.round(m * 60 * quizQuestions.length) : 0;
+}
+function fmtClock(sec) {
+  const s = Math.max(0, sec);
+  return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+}
+function stopQuizTimer() {
+  if (quizTimerId) { clearInterval(quizTimerId); quizTimerId = null; }
+  try { localStorage.removeItem(`quizDeadline:${currentUser.id}:${courseId}`); } catch (e) {}
+}
+function startQuizTimer(limitSec) {
+  // Keep the same deadline if the learner reloads mid-quiz, so a refresh can't reset the clock
+  const key = `quizDeadline:${currentUser.id}:${courseId}`;
+  let deadline = 0;
+  try { deadline = parseInt(localStorage.getItem(key)) || 0; } catch (e) {}
+  if (deadline <= Date.now() || deadline > Date.now() + limitSec * 1000 + 2000) {
+    deadline = Date.now() + limitSec * 1000;
+    try { localStorage.setItem(key, String(deadline)); } catch (e) {}
+  }
+  const el = document.getElementById('quiz-timer');
+  const tick = () => {
+    const left = Math.ceil((deadline - Date.now()) / 1000);
+    if (el) {
+      el.textContent = fmtClock(left);
+      el.style.color = left <= 60 ? 'var(--danger)' : '';
+    }
+    if (left <= 0) {
+      clearInterval(quizTimerId); quizTimerId = null;
+      quizTimedOut = true;
+      const form = document.getElementById('quiz-form');
+      if (form) form.requestSubmit();
+    }
+  };
+  tick();
+  if (quizTimerId === null && !quizTimedOut) quizTimerId = setInterval(tick, 1000);
+}
 
 async function initQuizFlow() {
   const [settings, attempts] = await Promise.all([
@@ -194,6 +236,7 @@ function renderQuizSummary() {
     `This course is completed by passing a quiz.<br>` +
     `<b>${quizQuestions.length} question${quizQuestions.length !== 1 ? 's' : ''}</b> · ` +
     `Passing score <b>${quizSettings.quiz_passing_score}%</b> · ` +
+    (quizTimeLimitSec() ? `Time limit <b>${fmtClock(quizTimeLimitSec())}</b> (${quizSettings.quiz_minutes_per_question} min per question) · ` : '') +
     `Attempts remaining: <b>${Math.max(0, remaining)}/${quizSettings.quiz_max_attempts}</b>`;
 
   if (remaining <= 0) {
@@ -208,9 +251,16 @@ function renderQuizSummary() {
 
 function renderQuizForm() {
   const wrap = document.getElementById('quiz-main-section');
+  const limitSec = quizTimeLimitSec();
+  quizTimedOut = false;
+  if (quizTimerId) { clearInterval(quizTimerId); quizTimerId = null; }
   wrap.innerHTML = `
     <div class="card card-body">
       <div class="card-title" style="margin-bottom:14px">Quiz — ${course.title}</div>
+      ${limitSec ? `<div style="position:sticky;top:0;z-index:5;display:flex;justify-content:space-between;align-items:center;background:var(--surface);border:1px solid var(--border-2);border-radius:var(--radius);padding:10px 14px;margin-bottom:16px;font-size:13px">
+        <span>Time remaining <span style="color:var(--text-muted)">(auto-submits at 0:00 — unanswered questions count as incorrect)</span></span>
+        <b id="quiz-timer" style="font-size:18px;font-variant-numeric:tabular-nums">${fmtClock(limitSec)}</b>
+      </div>` : ''}
       <form id="quiz-form">
         ${quizQuestions.map((q, qi) => `
           <div style="margin-bottom:22px;padding-bottom:18px;${qi < quizQuestions.length - 1 ? 'border-bottom:1px solid var(--border-2)' : ''}">
@@ -228,12 +278,15 @@ function renderQuizForm() {
   document.getElementById('quiz-form').onsubmit = submitQuiz;
   wrap.style.display = '';
   wrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  if (limitSec) startQuizTimer(limitSec);
 }
 
 function scrollToQuiz() { renderQuizForm(); }
 
 async function submitQuiz(e) {
   e.preventDefault();
+  const timedOut = quizTimedOut;
+  stopQuizTimer();
   const submitBtn = e.target.querySelector('button[type="submit"]');
   submitBtn.disabled = true; submitBtn.textContent = 'Grading…';
 
@@ -257,19 +310,20 @@ async function submitQuiz(e) {
     const resultEl = document.getElementById('quiz-result');
     document.getElementById('quiz-form').style.display = 'none';
     resultEl.style.display = '';
+    const timeNote = timedOut ? `<div style="font-size:13px;color:var(--text-muted);margin-bottom:10px">Time ran out, so your quiz was submitted automatically. Unanswered questions were marked incorrect.</div>` : '';
 
     if (passed) {
       enrollment = await Enrollments.updateProgress(currentUser.id, courseId, 'completed', 100);
       updateProgressUI();
-      resultEl.innerHTML = `<div class="alert alert-success">🎉 You scored ${score}% — you passed! This course is now marked complete and your certificate has been issued.</div>`;
+      resultEl.innerHTML = timeNote + `<div class="alert alert-success">🎉 You scored ${score}% — you passed! This course is now marked complete and your certificate has been issued.</div>`;
       toast('Quiz passed! Certificate issued. 🎉', 'success');
     } else {
       renderQuizSummary();
       const remaining = quizSettings.quiz_max_attempts - quizAttempts.length;
-      resultEl.innerHTML = remaining > 0
+      resultEl.innerHTML = timeNote + (remaining > 0
         ? `<div class="alert alert-error">You scored ${score}% — the passing score is ${quizSettings.quiz_passing_score}%. You have ${remaining} attempt${remaining !== 1 ? 's' : ''} left.</div>
            <button class="btn btn-primary" style="width:100%;justify-content:center;margin-top:10px" onclick="renderQuizForm()">Try Again</button>`
-        : `<div class="alert alert-error">You scored ${score}% — the passing score is ${quizSettings.quiz_passing_score}%. You've used all your attempts. Contact your administrator to reset them.</div>`;
+        : `<div class="alert alert-error">You scored ${score}% — the passing score is ${quizSettings.quiz_passing_score}%. You've used all your attempts. Contact your administrator to reset them.</div>`);
     }
   } catch (err) {
     toast(err.message, 'error');
