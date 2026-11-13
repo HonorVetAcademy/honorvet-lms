@@ -55,7 +55,7 @@ values (
   "type": "text",
   "options": [],
   "correct": [],
-  "guide": "Look for: a clear explanation of the $60/hr all-inclusive base wage rate; the 11 paid days off HonorVet offers (5 accrual-based PTO days + 6 federal holidays); and that PTO accrues from day one but can be used only after 90 days.\n\nAdd your own marking criteria for how the PR / PTO split should be pitched."
+  "guide": "Look for: a clear explanation of the $60/hr all-inclusive base wage rate; the 11 paid days off HonorVet offers (5 accrual-based PTO days + 6 federal holidays); and that PTO accrues from day one but can be used only after 90 days.\n\nThe PTO component is 4.65% of the all-inclusive rate (about $2.79/hr at $60/hr).\n\nAdd your own marking criteria for how the PR / PTO split should be pitched."
  },
  {
   "text": "List the state-mandated paid sick leave laws you know of. How many states have them, and is there a federal law?",
