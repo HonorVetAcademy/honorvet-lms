@@ -169,7 +169,7 @@ function renderQuizzes() {
     return;
   }
   area.innerHTML = `<div class="table-wrap"><table>
-    <thead><tr><th>Topic</th><th>Session held</th><th>Repetitions</th><th>Questions</th><th>Pass mark</th><th>Assigned</th><th>Scored</th><th></th></tr></thead>
+    <thead><tr><th>Topic</th><th>Session held</th><th>Repetitions</th><th>Questions</th><th>Pass mark</th><th>Timer</th><th>Assigned</th><th>Scored</th><th></th></tr></thead>
     <tbody>${quizzes.map(q => {
       const rows = sessions.filter(s => s.quiz_id === q.id);
       const done = rows.filter(s => s.status === 'completed').length;
@@ -179,6 +179,7 @@ function renderQuizzes() {
         <td>${q.repetitions || 1}</td>
         <td>${q.questions.length}</td>
         <td>${q.passing_score}%</td>
+        <td style="white-space:nowrap">${Number(q.minutes_per_question) > 0 ? q.minutes_per_question + ' min/question' : '—'}</td>
         <td>${rows.length}</td>
         <td>${done}/${rows.length}</td>
         <td style="white-space:nowrap">
@@ -340,18 +341,19 @@ function show(view) {
   window.scrollTo({ top: 0 });
 }
 function blankQuestion() { return { text: '', type: 'single', options: ['', ''], correct: [], guide: '' }; }
-function leave() { draft = null; scoring = null; show('list'); renderAll(); }
+function leave() { stopRunTimer(); draft = null; scoring = null; show('list'); renderAll(); }
 function confirmLeave() { if (confirm('Leave without saving? Your changes will be lost.')) leave(); }
 
 // ── Create / edit quiz ───────────────────────────────────────────
 function startNew() {
-  draft = { title: '', date: todayStr(), repetitions: 1, passing: 80, questions: [blankQuestion()] };
+  draft = { title: '', date: todayStr(), repetitions: 1, passing: 80, minutes: 1, questions: [blankQuestion()] };
   renderBuilder(); show('work');
 }
 function editQuiz(id) {
   const q = quizzes.find(x => x.id === id);
   if (!q) return;
   draft = { id: q.id, title: q.title, date: q.session_date || '', repetitions: q.repetitions || 1, passing: q.passing_score,
+            minutes: Number(q.minutes_per_question) || 0,
             questions: JSON.parse(JSON.stringify(q.questions)) };
   renderBuilder(); show('work');
 }
@@ -366,7 +368,7 @@ function renderBuilder() {
         <label class="form-label">Topic</label>
         <input class="form-input" id="b-title" placeholder="e.g. VMS submission walkthrough" value="${escHtml(d.title)}">
       </div>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px">
         <div class="form-group" style="margin-bottom:0">
           <label class="form-label">Session held on</label>
           <input class="form-input" id="b-date" type="date" value="${d.date}">
@@ -378,6 +380,10 @@ function renderBuilder() {
         <div class="form-group" style="margin-bottom:0">
           <label class="form-label">Pass mark (%)</label>
           <input class="form-input" id="b-pass" type="number" min="1" max="100" value="${d.passing}">
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label">Minutes per question <span style="font-weight:400;color:var(--text-muted)">(0 = no timer)</span></label>
+          <input class="form-input" id="b-mins" type="number" min="0" max="30" step="0.5" value="${d.minutes}">
         </div>
       </div>
     </div>
@@ -395,6 +401,7 @@ function renderBuilder() {
   document.getElementById('b-date').oninput  = e => d.date = e.target.value;
   document.getElementById('b-reps').oninput  = e => d.repetitions = parseInt(e.target.value) || 0;
   document.getElementById('b-pass').oninput  = e => d.passing = parseInt(e.target.value) || 0;
+  document.getElementById('b-mins').oninput  = e => d.minutes = parseFloat(e.target.value) || 0;
   renderQuestionList();
 }
 
@@ -454,6 +461,7 @@ async function saveQuiz() {
   if (!d.date) return toast('Choose the date the session was held.', 'error');
   if (!(d.repetitions >= 1)) return toast('Repetitions must be at least 1.', 'error');
   if (!(d.passing >= 1 && d.passing <= 100)) return toast('Pass mark must be between 1 and 100.', 'error');
+  if (!(d.minutes >= 0 && d.minutes <= 30)) return toast('Minutes per question must be between 0 and 30.', 'error');
   for (let i = 0; i < d.questions.length; i++) {
     const q = d.questions[i];
     if (!q.text.trim()) return toast(`Question ${i + 1} has no text.`, 'error');
@@ -470,7 +478,8 @@ async function saveQuiz() {
     const isNew = !d.id;
     const saved = await LiveQuiz.saveQuiz({
       ...(d.id ? { id: d.id } : { created_by: currentUser.id }),
-      title: d.title.trim(), session_date: d.date, repetitions: d.repetitions, passing_score: d.passing, questions,
+      title: d.title.trim(), session_date: d.date, repetitions: d.repetitions, passing_score: d.passing,
+      minutes_per_question: d.minutes, questions,
     });
     quizzes = isNew ? [saved, ...quizzes] : quizzes.map(q => q.id === saved.id ? saved : q);
     leave();
@@ -501,6 +510,13 @@ function renderRun() {
       <div class="card-text">${escHtml(nameOf(session.user_id))} · ${quiz.questions.length} question${quiz.questions.length !== 1 ? 's' : ''} · pass mark ${quiz.passing_score}%</div></div>
       <span class="badge badge-yellow">Session in progress</span>
     </div>
+    ${runSeconds(quiz) ? `<div style="position:sticky;top:0;z-index:5;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;background:var(--surface);border:1px solid var(--border-2);border-radius:var(--radius);padding:10px 14px;margin-bottom:14px;font-size:13px">
+      <span id="run-timer-label">Time remaining <span style="color:var(--text-muted)">(${quiz.minutes_per_question} min × ${quiz.questions.length} question${quiz.questions.length !== 1 ? 's' : ''})</span></span>
+      <span style="display:flex;align-items:center;gap:12px">
+        <b id="run-timer" style="font-size:20px;font-variant-numeric:tabular-nums">${fmtClock(runSeconds(quiz))}</b>
+        <button type="button" class="btn btn-ghost btn-sm" id="run-timer-btn">Pause</button>
+      </span>
+    </div>` : ''}
     <div class="form-hint" style="margin:0 0 14px">Ask each question and record the employee's answer. For written answers, mark whether it meets expectations. It's scored when you finish.</div>
     <form id="run-form">
       ${quiz.questions.map((q, qi) => `
@@ -527,6 +543,44 @@ function renderRun() {
     </form>`;
   document.getElementById('run-form').onsubmit = finishSession;
   window.scrollTo({ top: 0 });
+  startRunTimer(runSeconds(quiz));
+}
+
+// ── Session timer (advisory: warns at 0:00 but never blocks scoring) ─
+let runTimer = null;
+function runSeconds(quiz) {
+  const m = Number(quiz.minutes_per_question) || 0;
+  return m > 0 ? Math.round(m * 60 * quiz.questions.length) : 0;
+}
+function fmtClock(sec) {
+  const s = Math.max(0, Math.round(sec));
+  return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+}
+function stopRunTimer() { if (runTimer) { clearInterval(runTimer); runTimer = null; } }
+function startRunTimer(totalSec) {
+  stopRunTimer();
+  if (!totalSec) return;
+  const clock = document.getElementById('run-timer');
+  const label = document.getElementById('run-timer-label');
+  const btn = document.getElementById('run-timer-btn');
+  if (!clock) return;
+  let elapsed = 0, paused = false, last = Date.now();
+  const paint = () => {
+    const left = totalSec - elapsed;
+    clock.textContent = left >= 0 ? fmtClock(left) : '+' + fmtClock(-left);
+    clock.style.color = left <= 0 ? 'var(--red)' : '';
+    label.firstChild.textContent = left <= 0 ? 'Time is up, running over by ' : 'Time remaining ';
+  };
+  btn.onclick = () => {
+    paused = !paused; last = Date.now();
+    btn.textContent = paused ? 'Resume' : 'Pause';
+  };
+  runTimer = setInterval(() => {
+    const now = Date.now();
+    if (!paused) elapsed += (now - last) / 1000;
+    last = now;
+    paint();
+  }, 500);
 }
 function recordAnswer(qi) {
   scoring.answers[qi] = Array.from(document.querySelectorAll(`input[name="r-${qi}"]:checked`)).map(el => parseInt(el.value));
@@ -551,6 +605,7 @@ async function finishSession(e) {
       feedback: (feedback || '').trim() || null,
     });
     sessions = sessions.map(s => s.id === saved.id ? saved : s);
+    stopRunTimer();
     scoring = null;
     renderResult(saved);
   } catch (err) {
