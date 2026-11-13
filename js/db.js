@@ -385,14 +385,48 @@ const Quiz = {
 };
 
 // ── Live Quiz (one-on-one trainer-led sessions, admin/hr only) ──
+// A quiz (live_quizzes) is created once and then assigned to employees; each
+// assignment is a live_quiz_sessions row that becomes a scored result.
 const LiveQuiz = {
+  async getQuizzes() {
+    const { data, error } = await sb().from('live_quizzes').select('*').order('created_at', { ascending: false });
+    if (error) throw error;
+    return data || [];
+  },
+  async saveQuiz(quiz) {
+    if (quiz.id) {
+      const { id, ...fields } = quiz;
+      const { data, error } = await sb().from('live_quizzes').update(fields).eq('id', id).select().single();
+      if (error) throw error;
+      return data;
+    }
+    const { data, error } = await sb().from('live_quizzes').insert({ id: 'lqz-' + Date.now(), ...quiz }).select().single();
+    if (error) throw error;
+    return data;
+  },
+  async removeQuiz(id) {
+    const { data, error } = await sb().from('live_quizzes').delete().eq('id', id).select();
+    if (error) throw error;
+    return (data || []).length;
+  },
   async getAll() {
     const { data, error } = await sb().from('live_quiz_sessions').select('*').order('conducted_at', { ascending: false });
     if (error) throw error;
     return data || [];
   },
-  async create(session) {
-    const { data, error } = await sb().from('live_quiz_sessions').insert({ id: 'lq-' + Date.now(), ...session }).select().single();
+  async assign(quiz, userIds) {
+    const stamp = Date.now();
+    const rows = userIds.map((uid, i) => ({
+      id: `lq-${stamp}-${i}`, quiz_id: quiz.id, user_id: uid, title: quiz.title,
+      passing_score: quiz.passing_score, status: 'assigned', assigned_at: new Date().toISOString(),
+    }));
+    const { data, error } = await sb().from('live_quiz_sessions').insert(rows).select();
+    if (error) throw error;
+    return data || [];
+  },
+  async complete(id, fields) {
+    const { data, error } = await sb().from('live_quiz_sessions')
+      .update({ ...fields, status: 'completed', conducted_at: new Date().toISOString() }).eq('id', id).select().single();
     if (error) throw error;
     return data;
   },

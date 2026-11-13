@@ -25,36 +25,44 @@
     <header class="topbar">
       <div>
         <div class="topbar-title">1:1 Quiz Sessions</div>
-        <div class="topbar-sub" id="top-sub">Trainer-led, scored quizzes for one employee at a time</div>
+        <div class="topbar-sub">Create trainer-led quizzes, assign them to employees, and score each session</div>
       </div>
       <div class="topbar-actions" style="display:flex;align-items:center;gap:10px">
         <div id="notif-bell-wrap"></div>
-        <button class="btn btn-primary" id="new-btn" onclick="startNew()">+ New Session</button>
+        <button class="btn btn-primary" id="new-btn" onclick="startNew()">+ Create Quiz</button>
       </div>
     </header>
 
     <div class="page">
-      <!-- ── Sessions list ── -->
+      <!-- ── Quizzes / Assignments ── -->
       <div id="list-view">
         <div class="stats-grid" id="stats"></div>
-        <div class="section-head">
-          <div class="section-title">Past Sessions</div>
-          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-            <div class="topbar-search">
-              <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-              <input type="search" id="search" placeholder="Search employee or topic…">
-            </div>
-            <select class="mini-select" id="filter-result">
-              <option value="">All results</option>
-              <option value="pass">Passed</option>
-              <option value="fail">Failed</option>
-            </select>
-          </div>
+        <div class="tabs">
+          <button class="tab-btn active" id="tab-quizzes" onclick="setTab('quizzes')">Quizzes</button>
+          <button class="tab-btn" id="tab-results" onclick="setTab('results')">Assignments &amp; Results</button>
         </div>
-        <div id="sessions-area"><div class="spinner"></div></div>
+        <div id="quizzes-panel"><div class="spinner"></div></div>
+        <div id="results-panel" style="display:none">
+          <div class="section-head">
+            <div class="section-title">Assignments &amp; Results</div>
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <div class="topbar-search">
+                <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input type="search" id="search" placeholder="Search employee or topic…">
+              </div>
+              <select class="mini-select" id="filter-result">
+                <option value="">All statuses</option>
+                <option value="pending">Pending</option>
+                <option value="pass">Passed</option>
+                <option value="fail">Failed</option>
+              </select>
+            </div>
+          </div>
+          <div id="sessions-area"></div>
+        </div>
       </div>
 
-      <!-- ── Build / run / result workspace ── -->
+      <!-- ── Create / score workspace ── -->
       <div id="work-view" style="display:none;max-width:820px"></div>
     </div>
   </div>
@@ -71,6 +79,28 @@
   </div>
 </div>
 
+<!-- Assign modal -->
+<div class="modal-overlay" id="assign-modal">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-header">
+      <span class="modal-title" id="assign-title">Assign quiz</span>
+      <button class="modal-close" onclick="closeModal('assign-modal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="topbar-search" style="margin-bottom:12px;width:100%">
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="search" id="assign-search" placeholder="Search employees…" oninput="renderAssignList()">
+      </div>
+      <div id="assign-list" style="max-height:340px;overflow-y:auto;border:1px solid var(--border-2);border-radius:var(--radius-lg)"></div>
+    </div>
+    <div class="modal-footer">
+      <span id="assign-count" style="margin-right:auto;font-size:13px;color:var(--text-muted)"></span>
+      <button class="btn btn-secondary" onclick="closeModal('assign-modal')">Cancel</button>
+      <button class="btn btn-primary" id="assign-btn" onclick="doAssign()">Assign</button>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="js/config.js"></script>
 <script src="js/db.js"></script>
@@ -78,9 +108,10 @@
 <script>
 document.getElementById('app-name').textContent = APP_CONFIG.appName;
 
-let currentUser = null, allUsers = [], sessions = [], userById = {};
-let draft = null;   // { userId, title, passing, questions:[{text,type,options,correct}], answers:[[idx]] }
-let busy = false;
+let currentUser = null, allUsers = [], quizzes = [], sessions = [], userById = {};
+let draft = null;        // quiz being built: { id?, title, date, repetitions, passing, questions:[{text,type,options,correct}] }
+let scoring = null;      // { session, quiz, answers:[[idx]], feedback }
+let assignQuiz = null, assignPicked = new Set(), tab = 'quizzes', busy = false;
 
 (async () => {
   currentUser = await requireAdmin();
@@ -89,59 +120,166 @@ let busy = false;
   renderNotifBell(currentUser.id, 'notif-bell-wrap');
   renderUserChip(currentUser);
   try {
-    [allUsers, sessions] = await Promise.all([Users.getAll(), LiveQuiz.getAll()]);
+    [allUsers, quizzes, sessions] = await Promise.all([Users.getAll(), LiveQuiz.getQuizzes(), LiveQuiz.getAll()]);
   } catch (e) {
-    document.getElementById('sessions-area').innerHTML =
-      `<div class="alert alert-error">Couldn't load sessions: ${escHtml(e.message)}. If this is the first time, run <code>supabase-live-quiz.sql</code> in the Supabase SQL Editor.</div>`;
+    document.getElementById('quizzes-panel').innerHTML =
+      `<div class="alert alert-error">Couldn't load quizzes: ${escHtml(e.message)}. Make sure both <code>supabase-live-quiz.sql</code> and <code>supabase-live-quiz-v2.sql</code> have been run in the Supabase SQL Editor.</div>`;
     return;
   }
   allUsers.forEach(u => { userById[u.id] = u; });
-  renderList();
-  document.getElementById('search').oninput = renderList;
-  document.getElementById('filter-result').onchange = renderList;
+  renderAll();
+  document.getElementById('search').oninput = renderResults;
+  document.getElementById('filter-result').onchange = renderResults;
 })();
 
 const nameOf = id => userById[id]?.name || userById[id]?.email || 'Unknown user';
+const fmtDay = d => { if (!d) return '—'; const [y, m, dd] = d.split('-').map(Number); return new Date(y, m - 1, dd).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); };
+const todayStr = () => { const t = new Date(); return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`; };
+const statusOf = s => s.status === 'assigned' ? 'pending' : (s.passed ? 'pass' : 'fail');
+function sameSet(a, b) { return a.length === b.length && a.every(x => b.includes(x)); }
+function quizOf(s) { return quizzes.find(q => q.id === s.quiz_id) || null; }
 
-// ── Sessions list ────────────────────────────────────────────────
-function renderList() {
-  const total = sessions.length;
-  const passed = sessions.filter(s => s.passed).length;
-  const avg = total ? Math.round(sessions.reduce((a, s) => a + s.score, 0) / total) : 0;
-  const people = new Set(sessions.map(s => s.user_id)).size;
+function setTab(t) {
+  tab = t;
+  document.getElementById('tab-quizzes').classList.toggle('active', t === 'quizzes');
+  document.getElementById('tab-results').classList.toggle('active', t === 'results');
+  document.getElementById('quizzes-panel').style.display = t === 'quizzes' ? '' : 'none';
+  document.getElementById('results-panel').style.display = t === 'results' ? '' : 'none';
+}
+function renderAll() { renderStats(); renderQuizzes(); renderResults(); setTab(tab); }
+
+function renderStats() {
+  const done = sessions.filter(s => s.status === 'completed');
+  const pending = sessions.length - done.length;
+  const passed = done.filter(s => s.passed).length;
+  const avg = done.length ? Math.round(done.reduce((a, s) => a + s.score, 0) / done.length) : null;
   document.getElementById('stats').innerHTML = [
-    ['Sessions held', total, 'all time'],
-    ['Pass rate', total ? Math.round(passed / total * 100) + '%' : '—', `${passed} of ${total} passed`],
-    ['Average score', total ? avg + '%' : '—', 'across all sessions'],
-    ['Employees coached', people, 'unique learners'],
+    ['Quizzes', quizzes.length, 'created'],
+    ['Awaiting session', pending, 'assigned, not yet scored'],
+    ['Pass rate', done.length ? Math.round(passed / done.length * 100) + '%' : '—', `${passed} of ${done.length} scored`],
+    ['Average score', avg === null ? '—' : avg + '%', 'across scored sessions'],
   ].map(([l, v, sub]) => `<div class="stat-card"><div class="stat-label">${l}</div><div class="stat-value">${v}</div><div class="stat-sub">${sub}</div></div>`).join('');
+}
 
-  const q = document.getElementById('search').value.toLowerCase().trim();
-  const r = document.getElementById('filter-result').value;
-  const rows = sessions.filter(s =>
-    (!q || nameOf(s.user_id).toLowerCase().includes(q) || s.title.toLowerCase().includes(q)) &&
-    (!r || (r === 'pass') === s.passed));
-
-  const area = document.getElementById('sessions-area');
-  if (!rows.length) {
-    area.innerHTML = `<div class="empty-state"><div class="empty-icon">🎯</div>
-      <strong>${total ? 'No sessions match' : 'No sessions yet'}</strong>
-      ${total ? 'Try a different search or filter.' : 'Click “+ New Session” to run your first one-on-one quiz.'}</div>`;
+// ── Quizzes tab ──────────────────────────────────────────────────
+function renderQuizzes() {
+  const area = document.getElementById('quizzes-panel');
+  if (!quizzes.length) {
+    area.innerHTML = `<div class="empty-state"><div class="empty-icon">🎯</div><strong>No quizzes yet</strong>Click “+ Create Quiz” to build your first one-on-one quiz.</div>`;
     return;
   }
   area.innerHTML = `<div class="table-wrap"><table>
-    <thead><tr><th>Employee</th><th>Topic</th><th>Date</th><th>Conducted by</th><th>Score</th><th>Result</th><th></th></tr></thead>
-    <tbody>${rows.map(s => `<tr>
-      <td><strong>${escHtml(nameOf(s.user_id))}</strong></td>
-      <td>${escHtml(s.title)}</td>
-      <td style="white-space:nowrap">${fmtDateTime(s.conducted_at)}</td>
-      <td>${escHtml(s.conducted_by ? nameOf(s.conducted_by) : '—')}</td>
-      <td style="white-space:nowrap"><strong>${s.score}%</strong> <span style="color:var(--text-muted)">(${s.correct_count}/${s.total})</span></td>
-      <td><span class="badge ${s.passed ? 'badge-green' : 'badge-red'}">${s.passed ? 'Passed' : 'Failed'}</span></td>
-      <td style="white-space:nowrap">
-        <button class="btn btn-ghost btn-sm" onclick="viewSession('${s.id}')">View</button>
-        <button class="btn btn-ghost btn-sm" onclick="deleteSession('${s.id}')">Delete</button>
-      </td></tr>`).join('')}</tbody></table></div>`;
+    <thead><tr><th>Topic</th><th>Session held</th><th>Repetitions</th><th>Questions</th><th>Pass mark</th><th>Assigned</th><th>Scored</th><th></th></tr></thead>
+    <tbody>${quizzes.map(q => {
+      const rows = sessions.filter(s => s.quiz_id === q.id);
+      const done = rows.filter(s => s.status === 'completed').length;
+      return `<tr>
+        <td><strong>${escHtml(q.title)}</strong></td>
+        <td style="white-space:nowrap">${fmtDay(q.session_date)}</td>
+        <td>${q.repetitions || 1}</td>
+        <td>${q.questions.length}</td>
+        <td>${q.passing_score}%</td>
+        <td>${rows.length}</td>
+        <td>${done}/${rows.length}</td>
+        <td style="white-space:nowrap">
+          <button class="btn btn-primary btn-sm" onclick="openAssign('${q.id}')">Assign</button>
+          <button class="btn btn-ghost btn-sm" onclick="editQuiz('${q.id}')">Edit</button>
+          <button class="btn btn-ghost btn-sm" onclick="deleteQuiz('${q.id}')">Delete</button>
+        </td></tr>`;
+    }).join('')}</tbody></table></div>`;
+}
+
+async function deleteQuiz(id) {
+  const q = quizzes.find(x => x.id === id);
+  const n = sessions.filter(s => s.quiz_id === id).length;
+  const extra = n ? `\n\nThis also deletes its ${n} assignment${n !== 1 ? 's' : ''} and any scored results.` : '';
+  if (!q || !confirm(`Delete “${q.title}”?${extra}\n\nThis can't be undone.`)) return;
+  try {
+    if (!(await LiveQuiz.removeQuiz(id))) { toast("Nothing was deleted — you may not have permission.", 'error'); return; }
+    quizzes = quizzes.filter(x => x.id !== id);
+    sessions = sessions.filter(s => s.quiz_id !== id);
+    renderAll();
+    toast('Quiz deleted.', 'success');
+  } catch (e) { toast('Delete failed: ' + e.message, 'error'); }
+}
+
+// ── Assign ───────────────────────────────────────────────────────
+function openAssign(quizId) {
+  assignQuiz = quizzes.find(q => q.id === quizId);
+  if (!assignQuiz) return;
+  assignPicked = new Set();
+  document.getElementById('assign-title').textContent = `Assign — ${assignQuiz.title}`;
+  document.getElementById('assign-search').value = '';
+  renderAssignList();
+  openModal('assign-modal');
+}
+function renderAssignList() {
+  const already = new Set(sessions.filter(s => s.quiz_id === assignQuiz.id).map(s => s.user_id));
+  const q = document.getElementById('assign-search').value.toLowerCase().trim();
+  const users = allUsers.filter(u => !q || (u.name || '').toLowerCase().includes(q) || (u.real_name || '').toLowerCase().includes(q) || (u.email || '').toLowerCase().includes(q));
+  document.getElementById('assign-list').innerHTML = users.length ? users.map(u => {
+    const has = already.has(u.id);
+    return `<label style="display:flex;align-items:center;gap:10px;padding:9px 14px;border-bottom:1px solid var(--border-2);${has ? 'opacity:.55;cursor:default' : 'cursor:pointer'}">
+      <input type="checkbox" ${has ? 'disabled checked' : ''} ${assignPicked.has(u.id) ? 'checked' : ''} onchange="togglePick('${u.id}', this.checked)">
+      <span style="flex:1;font-size:13.5px"><strong>${escHtml(u.name || u.email)}</strong>
+        <span style="color:var(--text-muted)">${u.designation ? ' · ' + escHtml(u.designation) : ''}</span></span>
+      ${has ? '<span class="badge badge-gray">Already assigned</span>' : ''}</label>`;
+  }).join('') : '<div style="padding:18px;text-align:center;color:var(--text-muted);font-size:13px">No employees match.</div>';
+  updateAssignCount();
+}
+function togglePick(id, on) { on ? assignPicked.add(id) : assignPicked.delete(id); updateAssignCount(); }
+function updateAssignCount() {
+  const n = assignPicked.size;
+  document.getElementById('assign-count').textContent = n ? `${n} selected` : '';
+  const btn = document.getElementById('assign-btn');
+  btn.disabled = !n; btn.textContent = n ? `Assign to ${n}` : 'Assign';
+}
+async function doAssign() {
+  if (busy || !assignPicked.size) return;
+  busy = true;
+  const btn = document.getElementById('assign-btn'); btn.disabled = true; btn.textContent = 'Assigning…';
+  try {
+    const created = await LiveQuiz.assign(assignQuiz, [...assignPicked]);
+    sessions = [...created, ...sessions];
+    closeModal('assign-modal');
+    renderAll();
+    setTab('results');
+    toast(`Assigned to ${created.length} employee${created.length !== 1 ? 's' : ''}.`, 'success');
+  } catch (e) { toast('Could not assign: ' + e.message, 'error'); updateAssignCount(); }
+  finally { busy = false; }
+}
+
+// ── Assignments & Results tab ────────────────────────────────────
+function renderResults() {
+  const q = document.getElementById('search').value.toLowerCase().trim();
+  const f = document.getElementById('filter-result').value;
+  const rows = sessions.filter(s =>
+    (!q || nameOf(s.user_id).toLowerCase().includes(q) || (s.title || '').toLowerCase().includes(q)) &&
+    (!f || statusOf(s) === f));
+  const area = document.getElementById('sessions-area');
+  if (!rows.length) {
+    area.innerHTML = `<div class="empty-state"><div class="empty-icon">📋</div>
+      <strong>${sessions.length ? 'No matches' : 'Nothing assigned yet'}</strong>
+      ${sessions.length ? 'Try a different search or filter.' : 'Create a quiz, then assign it to the employees you want.'}</div>`;
+    return;
+  }
+  area.innerHTML = `<div class="table-wrap"><table>
+    <thead><tr><th>Employee</th><th>Topic</th><th>Session held</th><th>Score</th><th>Status</th><th>Scored on</th><th></th></tr></thead>
+    <tbody>${rows.map(s => {
+      const st = statusOf(s), qz = quizOf(s);
+      const badge = st === 'pending' ? '<span class="badge badge-yellow">Pending</span>' : st === 'pass' ? '<span class="badge badge-green">Passed</span>' : '<span class="badge badge-red">Failed</span>';
+      return `<tr>
+        <td><strong>${escHtml(nameOf(s.user_id))}</strong></td>
+        <td>${escHtml(s.title || qz?.title || '—')}</td>
+        <td style="white-space:nowrap">${fmtDay(qz?.session_date)}</td>
+        <td style="white-space:nowrap">${st === 'pending' ? '—' : `<strong>${s.score}%</strong> <span style="color:var(--text-muted)">(${s.correct_count}/${s.total})</span>`}</td>
+        <td>${badge}</td>
+        <td style="white-space:nowrap">${st === 'pending' ? '—' : fmtDateTime(s.conducted_at)}</td>
+        <td style="white-space:nowrap">
+          ${st === 'pending' ? `<button class="btn btn-primary btn-sm" onclick="startScoring('${s.id}')">Score session</button>` : `<button class="btn btn-ghost btn-sm" onclick="viewSession('${s.id}')">View</button>`}
+          <button class="btn btn-ghost btn-sm" onclick="deleteSession('${s.id}')">${st === 'pending' ? 'Unassign' : 'Delete'}</button>
+        </td></tr>`;
+    }).join('')}</tbody></table></div>`;
 }
 
 function viewSession(id) {
@@ -163,10 +301,9 @@ function viewSession(id) {
           <span class="badge ${ok ? 'badge-green' : 'badge-red'}" style="margin-left:6px">${ok ? 'Correct' : 'Incorrect'}</span></div>
         ${q.options.map((o, oi) => {
           const isC = q.correct.includes(oi), isG = given.includes(oi);
-          const mark = isC ? '✓' : (isG ? '✗' : '');
           const color = isC ? 'var(--success)' : (isG ? 'var(--red)' : 'inherit');
           return `<div style="font-size:13px;padding:3px 0;color:${color};${isC || isG ? 'font-weight:600' : ''}">
-            <span style="display:inline-block;width:16px">${mark}</span>${escHtml(o)}${isG ? ' <span style="font-weight:400;color:var(--text-muted)">— answered</span>' : ''}</div>`;
+            <span style="display:inline-block;width:16px">${isC ? '✓' : (isG ? '✗' : '')}</span>${escHtml(o)}${isG ? ' <span style="font-weight:400;color:var(--text-muted)">— answered</span>' : ''}</div>`;
         }).join('')}
       </div>`;
     }).join('')}`;
@@ -175,17 +312,18 @@ function viewSession(id) {
 
 async function deleteSession(id) {
   const s = sessions.find(x => x.id === id);
-  if (!s || !confirm(`Delete the session with ${nameOf(s.user_id)} (“${s.title}”)? This can't be undone.`)) return;
+  if (!s) return;
+  const pending = s.status === 'assigned';
+  if (!confirm(pending ? `Unassign “${s.title}” from ${nameOf(s.user_id)}?` : `Delete the scored session for ${nameOf(s.user_id)} (“${s.title}”)? This can't be undone.`)) return;
   try {
-    const n = await LiveQuiz.remove(id);
-    if (!n) { toast("Nothing was deleted — you may not have permission.", 'error'); return; }
+    if (!(await LiveQuiz.remove(id))) { toast("Nothing was deleted — you may not have permission.", 'error'); return; }
     sessions = sessions.filter(x => x.id !== id);
-    renderList();
-    toast('Session deleted.', 'success');
+    renderAll();
+    toast(pending ? 'Unassigned.' : 'Session deleted.', 'success');
   } catch (e) { toast('Delete failed: ' + e.message, 'error'); }
 }
 
-// ── Workspace: build → run → result ──────────────────────────────
+// ── Workspace ────────────────────────────────────────────────────
 function show(view) {
   document.getElementById('list-view').style.display = view === 'list' ? '' : 'none';
   document.getElementById('work-view').style.display = view === 'list' ? 'none' : '';
@@ -193,34 +331,40 @@ function show(view) {
   window.scrollTo({ top: 0 });
 }
 function blankQuestion() { return { text: '', type: 'single', options: ['', ''], correct: [] }; }
-function sameSet(a, b) { return a.length === b.length && a.every(x => b.includes(x)); }
+function leave() { draft = null; scoring = null; show('list'); renderAll(); }
+function confirmLeave() { if (confirm('Leave without saving? Your changes will be lost.')) leave(); }
 
+// ── Create / edit quiz ───────────────────────────────────────────
 function startNew() {
-  draft = { userId: '', title: '', passing: 80, questions: [blankQuestion()], answers: [] };
-  renderBuilder();
-  show('work');
+  draft = { title: '', date: todayStr(), repetitions: 1, passing: 80, questions: [blankQuestion()] };
+  renderBuilder(); show('work');
 }
-function backToList() {
-  if (draft && draft.phase !== 'done' && !confirm('Leave this session? Nothing has been saved yet.')) return;
-  draft = null; show('list'); renderList();
+function editQuiz(id) {
+  const q = quizzes.find(x => x.id === id);
+  if (!q) return;
+  draft = { id: q.id, title: q.title, date: q.session_date || '', repetitions: q.repetitions || 1, passing: q.passing_score,
+            questions: JSON.parse(JSON.stringify(q.questions)) };
+  renderBuilder(); show('work');
 }
 
 function renderBuilder() {
-  const d = draft; d.phase = 'build';
-  const userOpts = allUsers
-    .map(u => `<option value="${u.id}" ${u.id === d.userId ? 'selected' : ''}>${escHtml(u.name || u.email)}${u.designation ? ' — ' + escHtml(u.designation) : ''}</option>`).join('');
+  const d = draft;
   document.getElementById('work-view').innerHTML = `
-    <button class="btn btn-ghost btn-sm" onclick="backToList()" style="margin-bottom:14px">← Back to sessions</button>
+    <button class="btn btn-ghost btn-sm" onclick="confirmLeave()" style="margin-bottom:14px">← Back</button>
     <div class="card card-body" style="margin-bottom:18px">
-      <div class="card-title" style="margin-bottom:14px">1 · Session details</div>
+      <div class="card-title" style="margin-bottom:14px">${d.id ? 'Edit quiz' : 'New quiz'} · Session details</div>
       <div class="form-group">
-        <label class="form-label">Employee</label>
-        <select class="form-select" id="b-user"><option value="">— Select employee —</option>${userOpts}</select>
+        <label class="form-label">Topic</label>
+        <input class="form-input" id="b-title" placeholder="e.g. VMS submission walkthrough" value="${escHtml(d.title)}">
       </div>
-      <div style="display:grid;grid-template-columns:2fr 1fr;gap:12px">
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
         <div class="form-group" style="margin-bottom:0">
-          <label class="form-label">Topic / session title</label>
-          <input class="form-input" id="b-title" placeholder="e.g. VMS submission walkthrough" value="${escHtml(d.title)}">
+          <label class="form-label">Session held on</label>
+          <input class="form-input" id="b-date" type="date" value="${d.date}">
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label">Repetitions <span style="font-weight:400;color:var(--text-muted)">(if any)</span></label>
+          <input class="form-input" id="b-reps" type="number" min="1" max="99" value="${d.repetitions}">
         </div>
         <div class="form-group" style="margin-bottom:0">
           <label class="form-label">Pass mark (%)</label>
@@ -229,18 +373,19 @@ function renderBuilder() {
       </div>
     </div>
     <div class="card card-body" style="margin-bottom:18px">
-      <div class="card-title" style="margin-bottom:4px">2 · Questions</div>
-      <div class="form-hint" style="margin:0 0 16px">Tick the correct answer(s) for each question. Scoring is automatic once you record the employee's answers.</div>
+      <div class="card-title" style="margin-bottom:4px">Questions</div>
+      <div class="form-hint" style="margin:0 0 16px">Tick the correct answer(s) for each question. Sessions are scored automatically against these.</div>
       <div id="q-list"></div>
       <button class="btn btn-secondary" onclick="addQuestion()">+ Add question</button>
     </div>
     <div style="display:flex;justify-content:flex-end;gap:10px">
-      <button class="btn btn-secondary" onclick="backToList()">Cancel</button>
-      <button class="btn btn-primary" onclick="beginRun()">Start session →</button>
+      <button class="btn btn-secondary" onclick="confirmLeave()">Cancel</button>
+      <button class="btn btn-primary" id="save-btn" onclick="saveQuiz()">${d.id ? 'Save changes' : 'Create quiz'}</button>
     </div>`;
-  document.getElementById('b-user').onchange = e => d.userId = e.target.value;
   document.getElementById('b-title').oninput = e => d.title = e.target.value;
-  document.getElementById('b-pass').oninput = e => d.passing = parseInt(e.target.value) || 0;
+  document.getElementById('b-date').oninput  = e => d.date = e.target.value;
+  document.getElementById('b-reps').oninput  = e => d.repetitions = parseInt(e.target.value) || 0;
+  document.getElementById('b-pass').oninput  = e => d.passing = parseInt(e.target.value) || 0;
   renderQuestionList();
 }
 
@@ -266,10 +411,9 @@ function renderQuestionList() {
       ${q.options.length < 6 ? `<button class="btn btn-ghost btn-sm" onclick="addOption(${qi})">+ Add option</button>` : ''}
     </div>`).join('');
 }
-
-function addQuestion()   { draft.questions.push(blankQuestion()); renderQuestionList(); }
+function addQuestion()      { draft.questions.push(blankQuestion()); renderQuestionList(); }
 function removeQuestion(qi) { draft.questions.splice(qi, 1); renderQuestionList(); }
-function addOption(qi)   { draft.questions[qi].options.push(''); renderQuestionList(); }
+function addOption(qi)      { draft.questions[qi].options.push(''); renderQuestionList(); }
 function removeOption(qi, oi) {
   const q = draft.questions[qi];
   q.options.splice(oi, 1);
@@ -288,10 +432,12 @@ function setCorrect(qi, oi, on) {
   else q.correct = on ? [...new Set([...q.correct, oi])] : q.correct.filter(i => i !== oi);
 }
 
-function beginRun() {
+async function saveQuiz() {
+  if (busy) return;
   const d = draft;
-  if (!d.userId) return toast('Select the employee for this session.', 'error');
-  if (!d.title.trim()) return toast('Add a topic or title for this session.', 'error');
+  if (!d.title.trim()) return toast('Add the topic for this quiz.', 'error');
+  if (!d.date) return toast('Choose the date the session was held.', 'error');
+  if (!(d.repetitions >= 1)) return toast('Repetitions must be at least 1.', 'error');
   if (!(d.passing >= 1 && d.passing <= 100)) return toast('Pass mark must be between 1 and 100.', 'error');
   for (let i = 0; i < d.questions.length; i++) {
     const q = d.questions[i];
@@ -299,25 +445,47 @@ function beginRun() {
     if (q.options.some(o => !o.trim())) return toast(`Question ${i + 1} has an empty option — fill it in or remove it.`, 'error');
     if (!q.correct.length) return toast(`Question ${i + 1}: tick the correct answer.`, 'error');
   }
-  d.questions.forEach(q => { q.text = q.text.trim(); q.options = q.options.map(o => o.trim()); });
-  d.title = d.title.trim();
-  d.answers = d.questions.map(() => []);
-  d.feedback = '';
-  renderRun();
+  const questions = d.questions.map(q => ({ ...q, text: q.text.trim(), options: q.options.map(o => o.trim()) }));
+  const btn = document.getElementById('save-btn');
+  busy = true; btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    const isNew = !d.id;
+    const saved = await LiveQuiz.saveQuiz({
+      ...(d.id ? { id: d.id } : { created_by: currentUser.id }),
+      title: d.title.trim(), session_date: d.date, repetitions: d.repetitions, passing_score: d.passing, questions,
+    });
+    quizzes = isNew ? [saved, ...quizzes] : quizzes.map(q => q.id === saved.id ? saved : q);
+    leave();
+    setTab('quizzes');
+    toast(isNew ? 'Quiz created — now choose who to assign it to.' : 'Quiz updated.', 'success');
+    if (isNew) openAssign(saved.id);
+  } catch (e) {
+    toast('Could not save the quiz: ' + e.message, 'error');
+    btn.disabled = false; btn.textContent = d.id ? 'Save changes' : 'Create quiz';
+  } finally { busy = false; }
+}
+
+// ── Score a session ──────────────────────────────────────────────
+function startScoring(sessionId) {
+  const session = sessions.find(s => s.id === sessionId);
+  const quiz = session && quizOf(session);
+  if (!quiz) return toast('This quiz no longer exists.', 'error');
+  scoring = { session, quiz, answers: quiz.questions.map(() => []), feedback: '' };
+  renderRun(); show('work');
 }
 
 function renderRun() {
-  const d = draft; d.phase = 'run';
+  const { session, quiz } = scoring;
   document.getElementById('work-view').innerHTML = `
-    <button class="btn btn-ghost btn-sm" onclick="backToList()" style="margin-bottom:14px">← Cancel session</button>
+    <button class="btn btn-ghost btn-sm" onclick="if (confirm('Cancel this session? Nothing has been saved.')) leave()" style="margin-bottom:14px">← Cancel session</button>
     <div class="card card-body" style="margin-bottom:18px;display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;align-items:center">
-      <div><div class="card-title" style="margin-bottom:2px">${escHtml(d.title)}</div>
-      <div class="card-text">${escHtml(nameOf(d.userId))} · ${d.questions.length} question${d.questions.length !== 1 ? 's' : ''} · pass mark ${d.passing}%</div></div>
+      <div><div class="card-title" style="margin-bottom:2px">${escHtml(quiz.title)}</div>
+      <div class="card-text">${escHtml(nameOf(session.user_id))} · ${quiz.questions.length} question${quiz.questions.length !== 1 ? 's' : ''} · pass mark ${quiz.passing_score}%</div></div>
       <span class="badge badge-yellow">Session in progress</span>
     </div>
-    <div class="form-hint" style="margin:0 0 14px">Ask each question and tap the answer the employee gives. Answers stay hidden from the employee's view and are scored when you finish.</div>
+    <div class="form-hint" style="margin:0 0 14px">Ask each question and tick the answer the employee gives. It's scored when you finish.</div>
     <form id="run-form">
-      ${d.questions.map((q, qi) => `
+      ${quiz.questions.map((q, qi) => `
         <div class="card card-body" style="margin-bottom:14px">
           <div style="font-size:14px;font-weight:600;margin-bottom:10px">${qi + 1}. ${escHtml(q.text)}
             ${q.type === 'multi' ? '<span style="font-weight:400;color:var(--text-muted);font-size:12px"> (select all that apply)</span>' : ''}</div>
@@ -329,38 +497,36 @@ function renderRun() {
         </div>`).join('')}
       <div class="card card-body" style="margin-bottom:18px">
         <label class="form-label">Trainer feedback <span style="font-weight:400;color:var(--text-muted)">(optional)</span></label>
-        <textarea class="form-textarea" id="r-feedback" placeholder="Strengths, gaps, what to revisit…" oninput="draft.feedback = this.value"></textarea>
+        <textarea class="form-textarea" placeholder="Strengths, gaps, what to revisit…" oninput="scoring.feedback = this.value"></textarea>
       </div>
       <button type="submit" class="btn btn-primary" id="finish-btn" style="width:100%;justify-content:center">Finish &amp; score</button>
     </form>`;
   document.getElementById('run-form').onsubmit = finishSession;
   window.scrollTo({ top: 0 });
 }
-
 function recordAnswer(qi) {
-  draft.answers[qi] = Array.from(document.querySelectorAll(`input[name="r-${qi}"]:checked`)).map(el => parseInt(el.value));
+  scoring.answers[qi] = Array.from(document.querySelectorAll(`input[name="r-${qi}"]:checked`)).map(el => parseInt(el.value));
 }
 
 async function finishSession(e) {
   e.preventDefault();
   if (busy) return;
-  const d = draft;
-  const unanswered = d.answers.findIndex(a => !a.length);
-  if (unanswered !== -1) return toast(`Question ${unanswered + 1} has no answer recorded.`, 'error');
-  const correctCount = d.questions.filter((q, i) => sameSet(d.answers[i], q.correct)).length;
-  const total = d.questions.length;
+  const { session, quiz, answers, feedback } = scoring;
+  const missing = answers.findIndex(a => !a.length);
+  if (missing !== -1) return toast(`Question ${missing + 1} has no answer recorded.`, 'error');
+  const correctCount = quiz.questions.filter((q, i) => sameSet(answers[i], q.correct)).length;
+  const total = quiz.questions.length;
   const score = Math.round(correctCount / total * 100);
-  const passed = score >= d.passing;
   const btn = document.getElementById('finish-btn');
   busy = true; btn.disabled = true; btn.textContent = 'Saving…';
   try {
-    const saved = await LiveQuiz.create({
-      user_id: d.userId, conducted_by: currentUser.id, title: d.title, passing_score: d.passing,
-      questions: d.questions, answers: d.answers, correct_count: correctCount, total, score, passed,
-      feedback: (d.feedback || '').trim() || null,
+    const saved = await LiveQuiz.complete(session.id, {
+      conducted_by: currentUser.id, title: quiz.title, passing_score: quiz.passing_score,
+      questions: quiz.questions, answers, correct_count: correctCount, total, score, passed: score >= quiz.passing_score,
+      feedback: (feedback || '').trim() || null,
     });
-    sessions.unshift(saved);
-    d.phase = 'done';
+    sessions = sessions.map(s => s.id === saved.id ? saved : s);
+    scoring = null;
     renderResult(saved);
   } catch (err) {
     toast('Could not save the session: ' + err.message, 'error');
@@ -377,7 +543,7 @@ function renderResult(s) {
       <div style="font-size:13px;color:var(--text-muted)">${s.correct_count} of ${s.total} correct · pass mark ${s.passing_score}%</div>
       <div style="margin-top:22px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
         <button class="btn btn-secondary" onclick="viewSession('${s.id}')">Review answers</button>
-        <button class="btn btn-primary" onclick="draft=null;show('list');renderList()">Back to sessions</button>
+        <button class="btn btn-primary" onclick="leave();setTab('results')">Back to results</button>
       </div>
     </div>`;
   toast('Session saved.', 'success');
