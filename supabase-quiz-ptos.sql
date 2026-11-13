@@ -109,10 +109,16 @@ values (
  },
  {
   "text": "What is the PTO component of the all-inclusive base rate, as a percentage?",
-  "type": "text",
-  "options": [],
-  "correct": [],
-  "guide": "Answer key to be added by the trainer."
+  "type": "single",
+  "options": [
+   "1.92%",
+   "4.23%",
+   "4.65%",
+   "8.33%"
+  ],
+  "correct": [
+   2
+  ]
  }
 ]$QJ$::jsonb
 )
