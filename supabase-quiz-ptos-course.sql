@@ -12,39 +12,39 @@ declare
   "text": "You are on your first call with a candidate. They see “PTO” on the offer summary and ask what it stands for. What do you tell them?",
   "type": "single",
   "options": [
-   "Paid Time Off",
    "Pay Tax Offset",
    "Paid Travel Option",
+   "Paid Time Off",
    "Personal Time Obligation"
   ],
   "correct": [
-   0
+   2
   ]
  },
  {
   "text": "A candidate who has only worked in other countries asks: “Does US law make every employer give PTO?” What is the accurate answer?",
   "type": "single",
   "options": [
-   "No federal law requires PTO, but about 21 states mandate paid sick leave",
    "Yes, federal law requires every employer to give PTO",
+   "No federal law requires PTO, but about 21 states mandate paid sick leave",
    "Yes, but only on assignments longer than 13 weeks",
    "No, and no US state requires any paid leave"
   ],
   "correct": [
-   0
+   1
   ]
  },
  {
   "text": "A candidate asks you: “Does HonorVet have to give me PTO on every account?” What is the correct answer?",
   "type": "single",
   "options": [
-   "On Bill Rate accounts it is mandatory (11 days). On Markup accounts it is optional and depends on the account",
    "It is mandatory on every account",
    "It is optional on every account",
-   "It is mandatory on Markup accounts and optional on Bill Rate accounts"
+   "It is mandatory on Markup accounts and optional on Bill Rate accounts",
+   "On Bill Rate accounts it is mandatory (11 days). On Markup accounts it is optional and depends on the account"
   ],
   "correct": [
-   0
+   3
   ]
  },
  {
@@ -64,61 +64,61 @@ declare
   "text": "A candidate will work in a state with a paid sick leave law and asks how that works. Which statement is accurate?",
   "type": "single",
   "options": [
-   "About 21 states mandate paid sick leave. Employees accrue hours as they work, with an annual cap (for example, up to 40 hours for smaller employers in California)",
    "All 50 states mandate paid sick leave",
    "Sick leave is a federal law that is the same in every state",
+   "About 21 states mandate paid sick leave. Employees accrue hours as they work, with an annual cap (for example, up to 40 hours for smaller employers in California)",
    "Only states with fewer than 21 employers per business mandate it"
   ],
   "correct": [
-   0
+   2
   ]
  },
  {
   "text": "A candidate asks which federal holidays HonorVet gives as paid days off. Select the 6 that HonorVet observes.",
   "type": "multi",
   "options": [
-   "New Year’s Day",
    "Good Friday",
-   "Memorial Day",
-   "Independence Day (July 4)",
-   "Labor Day",
-   "Christmas",
    "Martin Luther King Jr. Day",
-   "Thanksgiving"
+   "New Year’s Day",
+   "Labor Day",
+   "Thanksgiving",
+   "Memorial Day",
+   "Christmas",
+   "Independence Day (July 4)"
   ],
   "correct": [
    0,
-   1,
    2,
    3,
-   4,
-   5
+   5,
+   6,
+   7
   ]
  },
  {
   "text": "On a Bill Rate account, the candidate says: “I don’t want PTOs. Just give me the higher rate.” How do you handle it?",
   "type": "single",
   "options": [
-   "Explain that PTO is mandatory on Bill Rate accounts (11 days), so it is part of the offer and cannot be waived for a higher rate",
    "Remove PTO and increase the rate",
+   "Explain that PTO is mandatory on Bill Rate accounts (11 days), so it is part of the offer and cannot be waived for a higher rate",
    "Tell them PTO is optional, so it can be dropped",
    "Offer 5 PTO days and drop the six holidays instead"
   ],
   "correct": [
-   0
+   1
   ]
  },
  {
   "text": "On a Markup account, the candidate asks for PTOs. What is the right way to approach your first offer?",
   "type": "single",
   "options": [
-   "PTO is optional on Markup accounts and depends on the account, so check what the account allows before offering anything",
    "Promise the full 11 days, as on Bill Rate accounts",
    "Tell them PTO is never available on Markup accounts",
-   "Offer 11 days now and sort out the account terms afterwards"
+   "Offer 11 days now and sort out the account terms afterwards",
+   "PTO is optional on Markup accounts and depends on the account, so check what the account allows before offering anything"
   ],
   "correct": [
-   0
+   3
   ]
  },
  {
