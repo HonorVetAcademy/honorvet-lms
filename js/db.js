@@ -384,6 +384,25 @@ const Quiz = {
   },
 };
 
+// ── Live Quiz (one-on-one trainer-led sessions, admin/hr only) ──
+const LiveQuiz = {
+  async getAll() {
+    const { data, error } = await sb().from('live_quiz_sessions').select('*').order('conducted_at', { ascending: false });
+    if (error) throw error;
+    return data || [];
+  },
+  async create(session) {
+    const { data, error } = await sb().from('live_quiz_sessions').insert({ id: 'lq-' + Date.now(), ...session }).select().single();
+    if (error) throw error;
+    return data;
+  },
+  async remove(id) {
+    const { data, error } = await sb().from('live_quiz_sessions').delete().eq('id', id).select();
+    if (error) throw error;
+    return (data || []).length;
+  },
+};
+
 // ── Path Quiz (one capstone assessment per learning path) ───────
 const PathQuiz = {
   async getQuestions(pathId) {

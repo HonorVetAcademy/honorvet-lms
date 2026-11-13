@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>1:1 Quiz Sessions — HonorVet Academy</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="icon" type="image/png" href="assets/logo-icon.png">
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <img class="logo-mark" src="assets/logo-icon.png" alt="HonorVet Technologies">
+      <div class="logo-text-wrap">
+        <div class="logo-text" id="app-name">HonorVet Academy</div>
+        <div class="logo-sub">Learning Platform</div>
+      </div>
+    </div>
+    <nav class="nav-section"><div class="nav-label">Menu</div><div id="nav-links"></div></nav>
+    <div class="sidebar-footer"><div class="user-chip" id="user-chip"></div></div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <div>
+        <div class="topbar-title">1:1 Quiz Sessions</div>
+        <div class="topbar-sub" id="top-sub">Trainer-led, scored quizzes for one employee at a time</div>
+      </div>
+      <div class="topbar-actions" style="display:flex;align-items:center;gap:10px">
+        <div id="notif-bell-wrap"></div>
+        <button class="btn btn-primary" id="new-btn" onclick="startNew()">+ New Session</button>
+      </div>
+    </header>
+
+    <div class="page">
+      <!-- ── Sessions list ── -->
+      <div id="list-view">
+        <div class="stats-grid" id="stats"></div>
+        <div class="section-head">
+          <div class="section-title">Past Sessions</div>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <div class="topbar-search">
+              <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input type="search" id="search" placeholder="Search employee or topic…">
+            </div>
+            <select class="mini-select" id="filter-result">
+              <option value="">All results</option>
+              <option value="pass">Passed</option>
+              <option value="fail">Failed</option>
+            </select>
+          </div>
+        </div>
+        <div id="sessions-area"><div class="spinner"></div></div>
+      </div>
+
+      <!-- ── Build / run / result workspace ── -->
+      <div id="work-view" style="display:none;max-width:820px"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Session detail modal -->
+<div class="modal-overlay" id="detail-modal">
+  <div class="modal" style="max-width:680px">
+    <div class="modal-header">
+      <span class="modal-title" id="detail-title">Session</span>
+      <button class="modal-close" onclick="closeModal('detail-modal')">&times;</button>
+    </div>
+    <div class="modal-body" id="detail-body" style="max-height:70vh;overflow-y:auto"></div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="js/config.js"></script>
+<script src="js/db.js"></script>
+<script src="js/app.js"></script>
+<script>
+document.getElementById('app-name').textContent = APP_CONFIG.appName;
+
+let currentUser = null, allUsers = [], sessions = [], userById = {};
+let draft = null;   // { userId, title, passing, questions:[{text,type,options,correct}], answers:[[idx]] }
+let busy = false;
+
+(async () => {
+  currentUser = await requireAdmin();
+  if (!currentUser) return;
+  renderNav('live-quiz', currentUser);
+  renderNotifBell(currentUser.id, 'notif-bell-wrap');
+  renderUserChip(currentUser);
+  try {
+    [allUsers, sessions] = await Promise.all([Users.getAll(), LiveQuiz.getAll()]);
+  } catch (e) {
+    document.getElementById('sessions-area').innerHTML =
+      `<div class="alert alert-error">Couldn't load sessions: ${escHtml(e.message)}. If this is the first time, run <code>supabase-live-quiz.sql</code> in the Supabase SQL Editor.</div>`;
+    return;
+  }
+  allUsers.forEach(u => { userById[u.id] = u; });
+  renderList();
+  document.getElementById('search').oninput = renderList;
+  document.getElementById('filter-result').onchange = renderList;
+})();
+
+const nameOf = id => userById[id]?.name || userById[id]?.email || 'Unknown user';
+
+// ── Sessions list ────────────────────────────────────────────────
+function renderList() {
+  const total = sessions.length;
+  const passed = sessions.filter(s => s.passed).length;
+  const avg = total ? Math.round(sessions.reduce((a, s) => a + s.score, 0) / total) : 0;
+  const people = new Set(sessions.map(s => s.user_id)).size;
+  document.getElementById('stats').innerHTML = [
+    ['Sessions held', total, 'all time'],
+    ['Pass rate', total ? Math.round(passed / total * 100) + '%' : '—', `${passed} of ${total} passed`],
+    ['Average score', total ? avg + '%' : '—', 'across all sessions'],
+    ['Employees coached', people, 'unique learners'],
+  ].map(([l, v, sub]) => `<div class="stat-card"><div class="stat-label">${l}</div><div class="stat-value">${v}</div><div class="stat-sub">${sub}</div></div>`).join('');
+
+  const q = document.getElementById('search').value.toLowerCase().trim();
+  const r = document.getElementById('filter-result').value;
+  const rows = sessions.filter(s =>
+    (!q || nameOf(s.user_id).toLowerCase().includes(q) || s.title.toLowerCase().includes(q)) &&
+    (!r || (r === 'pass') === s.passed));
+
+  const area = document.getElementById('sessions-area');
+  if (!rows.length) {
+    area.innerHTML = `<div class="empty-state"><div class="empty-icon">🎯</div>
+      <strong>${total ? 'No sessions match' : 'No sessions yet'}</strong>
+      ${total ? 'Try a different search or filter.' : 'Click “+ New Session” to run your first one-on-one quiz.'}</div>`;
+    return;
+  }
+  area.innerHTML = `<div class="table-wrap"><table>
+    <thead><tr><th>Employee</th><th>Topic</th><th>Date</th><th>Conducted by</th><th>Score</th><th>Result</th><th></th></tr></thead>
+    <tbody>${rows.map(s => `<tr>
+      <td><strong>${escHtml(nameOf(s.user_id))}</strong></td>
+      <td>${escHtml(s.title)}</td>
+      <td style="white-space:nowrap">${fmtDateTime(s.conducted_at)}</td>
+      <td>${escHtml(s.conducted_by ? nameOf(s.conducted_by) : '—')}</td>
+      <td style="white-space:nowrap"><strong>${s.score}%</strong> <span style="color:var(--text-muted)">(${s.correct_count}/${s.total})</span></td>
+      <td><span class="badge ${s.passed ? 'badge-green' : 'badge-red'}">${s.passed ? 'Passed' : 'Failed'}</span></td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-ghost btn-sm" onclick="viewSession('${s.id}')">View</button>
+        <button class="btn btn-ghost btn-sm" onclick="deleteSession('${s.id}')">Delete</button>
+      </td></tr>`).join('')}</tbody></table></div>`;
+}
+
+function viewSession(id) {
+  const s = sessions.find(x => x.id === id);
+  if (!s) return;
+  document.getElementById('detail-title').textContent = `${nameOf(s.user_id)} — ${s.title}`;
+  document.getElementById('detail-body').innerHTML = `
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px">
+      <span class="badge ${s.passed ? 'badge-green' : 'badge-red'}">${s.passed ? 'Passed' : 'Failed'}</span>
+      <strong>${s.score}%</strong>
+      <span style="color:var(--text-muted);font-size:13px">${s.correct_count}/${s.total} correct · pass mark ${s.passing_score}% · ${fmtDateTime(s.conducted_at)} · by ${escHtml(s.conducted_by ? nameOf(s.conducted_by) : '—')}</span>
+    </div>
+    ${s.feedback ? `<div class="card card-body" style="margin-bottom:16px"><div class="card-title" style="margin-bottom:6px">Trainer feedback</div><div class="card-text" style="white-space:pre-wrap">${escHtml(s.feedback)}</div></div>` : ''}
+    ${s.questions.map((q, qi) => {
+      const given = s.answers[qi] || [];
+      const ok = sameSet(given, q.correct);
+      return `<div style="margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--border-2)">
+        <div style="font-size:13.5px;font-weight:600;margin-bottom:8px">${qi + 1}. ${escHtml(q.text)}
+          <span class="badge ${ok ? 'badge-green' : 'badge-red'}" style="margin-left:6px">${ok ? 'Correct' : 'Incorrect'}</span></div>
+        ${q.options.map((o, oi) => {
+          const isC = q.correct.includes(oi), isG = given.includes(oi);
+          const mark = isC ? '✓' : (isG ? '✗' : '');
+          const color = isC ? 'var(--success)' : (isG ? 'var(--red)' : 'inherit');
+          return `<div style="font-size:13px;padding:3px 0;color:${color};${isC || isG ? 'font-weight:600' : ''}">
+            <span style="display:inline-block;width:16px">${mark}</span>${escHtml(o)}${isG ? ' <span style="font-weight:400;color:var(--text-muted)">— answered</span>' : ''}</div>`;
+        }).join('')}
+      </div>`;
+    }).join('')}`;
+  openModal('detail-modal');
+}
+
+async function deleteSession(id) {
+  const s = sessions.find(x => x.id === id);
+  if (!s || !confirm(`Delete the session with ${nameOf(s.user_id)} (“${s.title}”)? This can't be undone.`)) return;
+  try {
+    const n = await LiveQuiz.remove(id);
+    if (!n) { toast("Nothing was deleted — you may not have permission.", 'error'); return; }
+    sessions = sessions.filter(x => x.id !== id);
+    renderList();
+    toast('Session deleted.', 'success');
+  } catch (e) { toast('Delete failed: ' + e.message, 'error'); }
+}
+
+// ── Workspace: build → run → result ──────────────────────────────
+function show(view) {
+  document.getElementById('list-view').style.display = view === 'list' ? '' : 'none';
+  document.getElementById('work-view').style.display = view === 'list' ? 'none' : '';
+  document.getElementById('new-btn').style.display = view === 'list' ? '' : 'none';
+  window.scrollTo({ top: 0 });
+}
+function blankQuestion() { return { text: '', type: 'single', options: ['', ''], correct: [] }; }
+function sameSet(a, b) { return a.length === b.length && a.every(x => b.includes(x)); }
+
+function startNew() {
+  draft = { userId: '', title: '', passing: 80, questions: [blankQuestion()], answers: [] };
+  renderBuilder();
+  show('work');
+}
+function backToList() {
+  if (draft && draft.phase !== 'done' && !confirm('Leave this session? Nothing has been saved yet.')) return;
+  draft = null; show('list'); renderList();
+}
+
+function renderBuilder() {
+  const d = draft; d.phase = 'build';
+  const userOpts = allUsers
+    .map(u => `<option value="${u.id}" ${u.id === d.userId ? 'selected' : ''}>${escHtml(u.name || u.email)}${u.designation ? ' — ' + escHtml(u.designation) : ''}</option>`).join('');
+  document.getElementById('work-view').innerHTML = `
+    <button class="btn btn-ghost btn-sm" onclick="backToList()" style="margin-bottom:14px">← Back to sessions</button>
+    <div class="card card-body" style="margin-bottom:18px">
+      <div class="card-title" style="margin-bottom:14px">1 · Session details</div>
+      <div class="form-group">
+        <label class="form-label">Employee</label>
+        <select class="form-select" id="b-user"><option value="">— Select employee —</option>${userOpts}</select>
+      </div>
+      <div style="display:grid;grid-template-columns:2fr 1fr;gap:12px">
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label">Topic / session title</label>
+          <input class="form-input" id="b-title" placeholder="e.g. VMS submission walkthrough" value="${escHtml(d.title)}">
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label">Pass mark (%)</label>
+          <input class="form-input" id="b-pass" type="number" min="1" max="100" value="${d.passing}">
+        </div>
+      </div>
+    </div>
+    <div class="card card-body" style="margin-bottom:18px">
+      <div class="card-title" style="margin-bottom:4px">2 · Questions</div>
+      <div class="form-hint" style="margin:0 0 16px">Tick the correct answer(s) for each question. Scoring is automatic once you record the employee's answers.</div>
+      <div id="q-list"></div>
+      <button class="btn btn-secondary" onclick="addQuestion()">+ Add question</button>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:10px">
+      <button class="btn btn-secondary" onclick="backToList()">Cancel</button>
+      <button class="btn btn-primary" onclick="beginRun()">Start session →</button>
+    </div>`;
+  document.getElementById('b-user').onchange = e => d.userId = e.target.value;
+  document.getElementById('b-title').oninput = e => d.title = e.target.value;
+  document.getElementById('b-pass').oninput = e => d.passing = parseInt(e.target.value) || 0;
+  renderQuestionList();
+}
+
+function renderQuestionList() {
+  const d = draft;
+  document.getElementById('q-list').innerHTML = d.questions.map((q, qi) => `
+    <div style="margin-bottom:18px;padding:16px;border:1px solid var(--border-2);border-radius:var(--radius-lg);background:var(--surface)">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+        <strong style="font-size:13px">Question ${qi + 1}</strong>
+        <select class="mini-select" onchange="setType(${qi}, this.value)" style="margin-left:auto">
+          <option value="single" ${q.type === 'single' ? 'selected' : ''}>One correct answer</option>
+          <option value="multi" ${q.type === 'multi' ? 'selected' : ''}>Multiple correct answers</option>
+        </select>
+        ${d.questions.length > 1 ? `<button class="btn btn-ghost btn-sm" onclick="removeQuestion(${qi})">Remove</button>` : ''}
+      </div>
+      <textarea class="form-textarea" style="min-height:64px;margin-bottom:10px" placeholder="Type the question…" oninput="draft.questions[${qi}].text = this.value">${escHtml(q.text)}</textarea>
+      ${q.options.map((o, oi) => `
+        <div style="display:flex;align-items:center;gap:9px;margin-bottom:8px">
+          <input type="${q.type === 'multi' ? 'checkbox' : 'radio'}" name="bc-${qi}" ${q.correct.includes(oi) ? 'checked' : ''} onchange="setCorrect(${qi}, ${oi}, this.checked)" title="Mark as correct">
+          <input class="form-input" style="flex:1" placeholder="Option ${oi + 1}" value="${escHtml(o)}" oninput="draft.questions[${qi}].options[${oi}] = this.value">
+          ${q.options.length > 2 ? `<button class="btn btn-ghost btn-sm" onclick="removeOption(${qi}, ${oi})" title="Remove option">&times;</button>` : ''}
+        </div>`).join('')}
+      ${q.options.length < 6 ? `<button class="btn btn-ghost btn-sm" onclick="addOption(${qi})">+ Add option</button>` : ''}
+    </div>`).join('');
+}
+
+function addQuestion()   { draft.questions.push(blankQuestion()); renderQuestionList(); }
+function removeQuestion(qi) { draft.questions.splice(qi, 1); renderQuestionList(); }
+function addOption(qi)   { draft.questions[qi].options.push(''); renderQuestionList(); }
+function removeOption(qi, oi) {
+  const q = draft.questions[qi];
+  q.options.splice(oi, 1);
+  q.correct = q.correct.filter(i => i !== oi).map(i => i > oi ? i - 1 : i);
+  renderQuestionList();
+}
+function setType(qi, type) {
+  const q = draft.questions[qi];
+  q.type = type;
+  if (type === 'single') q.correct = q.correct.slice(0, 1);
+  renderQuestionList();
+}
+function setCorrect(qi, oi, on) {
+  const q = draft.questions[qi];
+  if (q.type === 'single') q.correct = [oi];
+  else q.correct = on ? [...new Set([...q.correct, oi])] : q.correct.filter(i => i !== oi);
+}
+
+function beginRun() {
+  const d = draft;
+  if (!d.userId) return toast('Select the employee for this session.', 'error');
+  if (!d.title.trim()) return toast('Add a topic or title for this session.', 'error');
+  if (!(d.passing >= 1 && d.passing <= 100)) return toast('Pass mark must be between 1 and 100.', 'error');
+  for (let i = 0; i < d.questions.length; i++) {
+    const q = d.questions[i];
+    if (!q.text.trim()) return toast(`Question ${i + 1} has no text.`, 'error');
+    if (q.options.some(o => !o.trim())) return toast(`Question ${i + 1} has an empty option — fill it in or remove it.`, 'error');
+    if (!q.correct.length) return toast(`Question ${i + 1}: tick the correct answer.`, 'error');
+  }
+  d.questions.forEach(q => { q.text = q.text.trim(); q.options = q.options.map(o => o.trim()); });
+  d.title = d.title.trim();
+  d.answers = d.questions.map(() => []);
+  d.feedback = '';
+  renderRun();
+}
+
+function renderRun() {
+  const d = draft; d.phase = 'run';
+  document.getElementById('work-view').innerHTML = `
+    <button class="btn btn-ghost btn-sm" onclick="backToList()" style="margin-bottom:14px">← Cancel session</button>
+    <div class="card card-body" style="margin-bottom:18px;display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;align-items:center">
+      <div><div class="card-title" style="margin-bottom:2px">${escHtml(d.title)}</div>
+      <div class="card-text">${escHtml(nameOf(d.userId))} · ${d.questions.length} question${d.questions.length !== 1 ? 's' : ''} · pass mark ${d.passing}%</div></div>
+      <span class="badge badge-yellow">Session in progress</span>
+    </div>
+    <div class="form-hint" style="margin:0 0 14px">Ask each question and tap the answer the employee gives. Answers stay hidden from the employee's view and are scored when you finish.</div>
+    <form id="run-form">
+      ${d.questions.map((q, qi) => `
+        <div class="card card-body" style="margin-bottom:14px">
+          <div style="font-size:14px;font-weight:600;margin-bottom:10px">${qi + 1}. ${escHtml(q.text)}
+            ${q.type === 'multi' ? '<span style="font-weight:400;color:var(--text-muted);font-size:12px"> (select all that apply)</span>' : ''}</div>
+          ${q.options.map((o, oi) => `
+            <label style="display:flex;align-items:center;gap:9px;padding:6px 2px;cursor:pointer;font-size:13.5px">
+              <input type="${q.type === 'multi' ? 'checkbox' : 'radio'}" name="r-${qi}" value="${oi}" onchange="recordAnswer(${qi})">
+              ${escHtml(o)}
+            </label>`).join('')}
+        </div>`).join('')}
+      <div class="card card-body" style="margin-bottom:18px">
+        <label class="form-label">Trainer feedback <span style="font-weight:400;color:var(--text-muted)">(optional)</span></label>
+        <textarea class="form-textarea" id="r-feedback" placeholder="Strengths, gaps, what to revisit…" oninput="draft.feedback = this.value"></textarea>
+      </div>
+      <button type="submit" class="btn btn-primary" id="finish-btn" style="width:100%;justify-content:center">Finish &amp; score</button>
+    </form>`;
+  document.getElementById('run-form').onsubmit = finishSession;
+  window.scrollTo({ top: 0 });
+}
+
+function recordAnswer(qi) {
+  draft.answers[qi] = Array.from(document.querySelectorAll(`input[name="r-${qi}"]:checked`)).map(el => parseInt(el.value));
+}
+
+async function finishSession(e) {
+  e.preventDefault();
+  if (busy) return;
+  const d = draft;
+  const unanswered = d.answers.findIndex(a => !a.length);
+  if (unanswered !== -1) return toast(`Question ${unanswered + 1} has no answer recorded.`, 'error');
+  const correctCount = d.questions.filter((q, i) => sameSet(d.answers[i], q.correct)).length;
+  const total = d.questions.length;
+  const score = Math.round(correctCount / total * 100);
+  const passed = score >= d.passing;
+  const btn = document.getElementById('finish-btn');
+  busy = true; btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    const saved = await LiveQuiz.create({
+      user_id: d.userId, conducted_by: currentUser.id, title: d.title, passing_score: d.passing,
+      questions: d.questions, answers: d.answers, correct_count: correctCount, total, score, passed,
+      feedback: (d.feedback || '').trim() || null,
+    });
+    sessions.unshift(saved);
+    d.phase = 'done';
+    renderResult(saved);
+  } catch (err) {
+    toast('Could not save the session: ' + err.message, 'error');
+    btn.disabled = false; btn.textContent = 'Finish & score';
+  } finally { busy = false; }
+}
+
+function renderResult(s) {
+  document.getElementById('work-view').innerHTML = `
+    <div class="card card-body" style="text-align:center;padding:36px 24px;margin-bottom:18px">
+      <div style="font-size:13px;color:var(--text-muted);margin-bottom:6px">${escHtml(nameOf(s.user_id))} · ${escHtml(s.title)}</div>
+      <div style="font-size:54px;font-weight:800;line-height:1.1;color:${s.passed ? 'var(--success)' : 'var(--red)'}">${s.score}%</div>
+      <div style="margin:10px 0 4px"><span class="badge ${s.passed ? 'badge-green' : 'badge-red'}">${s.passed ? 'Passed' : 'Failed'}</span></div>
+      <div style="font-size:13px;color:var(--text-muted)">${s.correct_count} of ${s.total} correct · pass mark ${s.passing_score}%</div>
+      <div style="margin-top:22px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+        <button class="btn btn-secondary" onclick="viewSession('${s.id}')">Review answers</button>
+        <button class="btn btn-primary" onclick="draft=null;show('list');renderList()">Back to sessions</button>
+      </div>
+    </div>`;
+  toast('Session saved.', 'success');
+}
+</script>
+</body>
+</html>
