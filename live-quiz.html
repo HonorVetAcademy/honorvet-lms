@@ -294,6 +294,15 @@ function viewSession(id) {
     </div>
     ${s.feedback ? `<div class="card card-body" style="margin-bottom:16px"><div class="card-title" style="margin-bottom:6px">Trainer feedback</div><div class="card-text" style="white-space:pre-wrap">${escHtml(s.feedback)}</div></div>` : ''}
     ${s.questions.map((q, qi) => {
+      if (q.type === 'text') {
+        const a = s.answers[qi] || {};
+        return `<div style="margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--border-2)">
+          <div style="font-size:13.5px;font-weight:600;margin-bottom:8px">${qi + 1}. ${escHtml(q.text)}
+            <span class="badge ${a.ok ? 'badge-green' : 'badge-red'}" style="margin-left:6px">${a.ok ? 'Meets expectations' : 'Needs improvement'}</span></div>
+          <div style="font-size:13px;white-space:pre-wrap;margin-bottom:6px">${a.text ? escHtml(a.text) : '<span style="color:var(--text-muted)">No answer recorded.</span>'}</div>
+          ${q.guide ? `<div style="font-size:12px;color:var(--text-muted);white-space:pre-wrap"><strong>Reviewer guide:</strong> ${escHtml(q.guide)}</div>` : ''}
+        </div>`;
+      }
       const given = s.answers[qi] || [];
       const ok = sameSet(given, q.correct);
       return `<div style="margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--border-2)">
@@ -330,7 +339,7 @@ function show(view) {
   document.getElementById('new-btn').style.display = view === 'list' ? '' : 'none';
   window.scrollTo({ top: 0 });
 }
-function blankQuestion() { return { text: '', type: 'single', options: ['', ''], correct: [] }; }
+function blankQuestion() { return { text: '', type: 'single', options: ['', ''], correct: [], guide: '' }; }
 function leave() { draft = null; scoring = null; show('list'); renderAll(); }
 function confirmLeave() { if (confirm('Leave without saving? Your changes will be lost.')) leave(); }
 
@@ -374,7 +383,7 @@ function renderBuilder() {
     </div>
     <div class="card card-body" style="margin-bottom:18px">
       <div class="card-title" style="margin-bottom:4px">Questions</div>
-      <div class="form-hint" style="margin:0 0 16px">Tick the correct answer(s) for each question. Sessions are scored automatically against these.</div>
+      <div class="form-hint" style="margin:0 0 16px">Multiple-choice questions are scored automatically. Written-answer questions are marked by the trainer during the session.</div>
       <div id="q-list"></div>
       <button class="btn btn-secondary" onclick="addQuestion()">+ Add question</button>
     </div>
@@ -398,17 +407,21 @@ function renderQuestionList() {
         <select class="mini-select" onchange="setType(${qi}, this.value)" style="margin-left:auto">
           <option value="single" ${q.type === 'single' ? 'selected' : ''}>One correct answer</option>
           <option value="multi" ${q.type === 'multi' ? 'selected' : ''}>Multiple correct answers</option>
+          <option value="text" ${q.type === 'text' ? 'selected' : ''}>Written answer (trainer reviews)</option>
         </select>
         ${d.questions.length > 1 ? `<button class="btn btn-ghost btn-sm" onclick="removeQuestion(${qi})">Remove</button>` : ''}
       </div>
       <textarea class="form-textarea" style="min-height:64px;margin-bottom:10px" placeholder="Type the question…" oninput="draft.questions[${qi}].text = this.value">${escHtml(q.text)}</textarea>
-      ${q.options.map((o, oi) => `
+      ${q.type === 'text' ? `
+        <label class="form-label">Reviewer guide <span style="font-weight:400;color:var(--text-muted)">(ideal answer / what to look for — only the trainer sees this)</span></label>
+        <textarea class="form-textarea" style="min-height:64px" placeholder="e.g. Must mention…" oninput="draft.questions[${qi}].guide = this.value">${escHtml(q.guide || '')}</textarea>` : ''}
+      ${q.type === 'text' ? '' : q.options.map((o, oi) => `
         <div style="display:flex;align-items:center;gap:9px;margin-bottom:8px">
           <input type="${q.type === 'multi' ? 'checkbox' : 'radio'}" name="bc-${qi}" ${q.correct.includes(oi) ? 'checked' : ''} onchange="setCorrect(${qi}, ${oi}, this.checked)" title="Mark as correct">
           <input class="form-input" style="flex:1" placeholder="Option ${oi + 1}" value="${escHtml(o)}" oninput="draft.questions[${qi}].options[${oi}] = this.value">
           ${q.options.length > 2 ? `<button class="btn btn-ghost btn-sm" onclick="removeOption(${qi}, ${oi})" title="Remove option">&times;</button>` : ''}
         </div>`).join('')}
-      ${q.options.length < 6 ? `<button class="btn btn-ghost btn-sm" onclick="addOption(${qi})">+ Add option</button>` : ''}
+      ${q.type !== 'text' && q.options.length < 6 ? `<button class="btn btn-ghost btn-sm" onclick="addOption(${qi})">+ Add option</button>` : ''}
     </div>`).join('');
 }
 function addQuestion()      { draft.questions.push(blankQuestion()); renderQuestionList(); }
@@ -424,6 +437,8 @@ function setType(qi, type) {
   const q = draft.questions[qi];
   q.type = type;
   if (type === 'single') q.correct = q.correct.slice(0, 1);
+  if (type === 'text') q.correct = [];
+  else if (q.options.length < 2) q.options = ['', ''];
   renderQuestionList();
 }
 function setCorrect(qi, oi, on) {
@@ -442,10 +457,13 @@ async function saveQuiz() {
   for (let i = 0; i < d.questions.length; i++) {
     const q = d.questions[i];
     if (!q.text.trim()) return toast(`Question ${i + 1} has no text.`, 'error');
+    if (q.type === 'text') continue;
     if (q.options.some(o => !o.trim())) return toast(`Question ${i + 1} has an empty option — fill it in or remove it.`, 'error');
     if (!q.correct.length) return toast(`Question ${i + 1}: tick the correct answer.`, 'error');
   }
-  const questions = d.questions.map(q => ({ ...q, text: q.text.trim(), options: q.options.map(o => o.trim()) }));
+  const questions = d.questions.map(q => q.type === 'text'
+    ? { text: q.text.trim(), type: 'text', options: [], correct: [], guide: (q.guide || '').trim() }
+    : { text: q.text.trim(), type: q.type, options: q.options.map(o => o.trim()), correct: q.correct });
   const btn = document.getElementById('save-btn');
   busy = true; btn.disabled = true; btn.textContent = 'Saving…';
   try {
@@ -470,7 +488,7 @@ function startScoring(sessionId) {
   const session = sessions.find(s => s.id === sessionId);
   const quiz = session && quizOf(session);
   if (!quiz) return toast('This quiz no longer exists.', 'error');
-  scoring = { session, quiz, answers: quiz.questions.map(() => []), feedback: '' };
+  scoring = { session, quiz, answers: quiz.questions.map(q => q.type === 'text' ? { text: '', ok: null } : []), feedback: '' };
   renderRun(); show('work');
 }
 
@@ -483,13 +501,19 @@ function renderRun() {
       <div class="card-text">${escHtml(nameOf(session.user_id))} · ${quiz.questions.length} question${quiz.questions.length !== 1 ? 's' : ''} · pass mark ${quiz.passing_score}%</div></div>
       <span class="badge badge-yellow">Session in progress</span>
     </div>
-    <div class="form-hint" style="margin:0 0 14px">Ask each question and tick the answer the employee gives. It's scored when you finish.</div>
+    <div class="form-hint" style="margin:0 0 14px">Ask each question and record the employee's answer. For written answers, mark whether it meets expectations. It's scored when you finish.</div>
     <form id="run-form">
       ${quiz.questions.map((q, qi) => `
         <div class="card card-body" style="margin-bottom:14px">
           <div style="font-size:14px;font-weight:600;margin-bottom:10px">${qi + 1}. ${escHtml(q.text)}
             ${q.type === 'multi' ? '<span style="font-weight:400;color:var(--text-muted);font-size:12px"> (select all that apply)</span>' : ''}</div>
-          ${q.options.map((o, oi) => `
+          ${q.type === 'text' ? `
+            ${q.guide ? `<div style="font-size:12.5px;color:var(--text-muted);background:var(--surface);border:1px solid var(--border-2);border-radius:var(--radius);padding:10px 12px;margin-bottom:10px;white-space:pre-wrap"><strong>Reviewer guide:</strong> ${escHtml(q.guide)}</div>` : ''}
+            <textarea class="form-textarea" placeholder="Record the employee's answer…" oninput="scoring.answers[${qi}].text = this.value"></textarea>
+            <div style="display:flex;gap:18px;margin-top:10px;font-size:13.5px">
+              <label style="cursor:pointer"><input type="radio" name="r-${qi}" onchange="scoring.answers[${qi}].ok = true"> Meets expectations</label>
+              <label style="cursor:pointer"><input type="radio" name="r-${qi}" onchange="scoring.answers[${qi}].ok = false"> Needs improvement</label>
+            </div>` : q.options.map((o, oi) => `
             <label style="display:flex;align-items:center;gap:9px;padding:6px 2px;cursor:pointer;font-size:13.5px">
               <input type="${q.type === 'multi' ? 'checkbox' : 'radio'}" name="r-${qi}" value="${oi}" onchange="recordAnswer(${qi})">
               ${escHtml(o)}
@@ -512,9 +536,10 @@ async function finishSession(e) {
   e.preventDefault();
   if (busy) return;
   const { session, quiz, answers, feedback } = scoring;
-  const missing = answers.findIndex(a => !a.length);
-  if (missing !== -1) return toast(`Question ${missing + 1} has no answer recorded.`, 'error');
-  const correctCount = quiz.questions.filter((q, i) => sameSet(answers[i], q.correct)).length;
+  const isRight = (q, i) => q.type === 'text' ? answers[i].ok === true : sameSet(answers[i], q.correct);
+  const missing = quiz.questions.findIndex((q, i) => q.type === 'text' ? answers[i].ok === null : !answers[i].length);
+  if (missing !== -1) return toast(quiz.questions[missing].type === 'text' ? `Question ${missing + 1}: mark whether the answer meets expectations.` : `Question ${missing + 1} has no answer recorded.`, 'error');
+  const correctCount = quiz.questions.filter(isRight).length;
   const total = quiz.questions.length;
   const score = Math.round(correctCount / total * 100);
   const btn = document.getElementById('finish-btn');
