@@ -385,6 +385,46 @@ const Quiz = {
   },
 };
 
+// ── Microlearning videos ("Get a coffee and sit with us") ────────
+// Everyone can read; admin/hr manage. A video is a pasted link or an uploaded
+// file kept in the public "microlearning" storage bucket.
+const MicroVideos = {
+  BUCKET: 'microlearning',
+  async getAll() {
+    const { data, error } = await sb().from('micro_videos').select('*').order('created_at', { ascending: false });
+    if (error) throw error;
+    return data || [];
+  },
+  async save(video) {
+    if (video.id) {
+      const { id, ...fields } = video;
+      const { data, error } = await sb().from('micro_videos').update(fields).eq('id', id).select().single();
+      if (error) throw error;
+      return data;
+    }
+    const { data, error } = await sb().from('micro_videos').insert({ id: 'mv-' + Date.now(), ...video }).select().single();
+    if (error) throw error;
+    return data;
+  },
+  async upload(file) {
+    const safe = file.name.replace(/[^a-zA-Z0-9._-]+/g, '_');
+    const path = `${Date.now()}-${safe}`;
+    const { error } = await sb().storage.from(this.BUCKET).upload(path, file, { contentType: file.type || 'video/mp4', upsert: false });
+    if (error) throw error;
+    const { data } = sb().storage.from(this.BUCKET).getPublicUrl(path);
+    return { path, url: data.publicUrl };
+  },
+  async removeFile(path) {
+    if (!path) return;
+    await sb().storage.from(this.BUCKET).remove([path]);
+  },
+  async remove(video) {
+    const { error } = await sb().from('micro_videos').delete().eq('id', video.id);
+    if (error) throw error;
+    await this.removeFile(video.storage_path);
+  },
+};
+
 // ── Live Quiz (one-on-one trainer-led sessions, admin/hr only) ──
 // A quiz (live_quizzes) is created once and then assigned to employees; each
 // assignment is a live_quiz_sessions row that becomes a scored result.

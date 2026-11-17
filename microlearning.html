@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Get a Coffee and Sit With Us — HonorVet Academy</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="icon" type="image/png" href="assets/logo-icon.png">
+  <style>
+    .mv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 22px; }
+    .mv-card { background: var(--white); border: 1px solid var(--border-2); border-radius: var(--radius-lg); overflow: hidden; display: flex; flex-direction: column; }
+    .mv-thumb { position: relative; aspect-ratio: 16 / 9; background: #231F20 center / cover no-repeat; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+    .mv-play { width: 54px; height: 54px; border-radius: 50%; background: rgba(255,255,255,.95); display: flex; align-items: center; justify-content: center; transition: transform .15s; }
+    .mv-thumb:hover .mv-play, .mv-thumb:focus-visible .mv-play { transform: scale(1.08); }
+    .mv-dur { position: absolute; right: 10px; bottom: 10px; background: rgba(35,31,32,.85); color: #fff; font-size: 12px; font-weight: 600; padding: 3px 8px; border-radius: 6px; }
+    .mv-body { padding: 16px 18px 18px; display: flex; flex-direction: column; gap: 6px; flex: 1; }
+    .mv-title { font-size: 15px; font-weight: 700; line-height: 1.35; }
+    .mv-desc { font-size: 13px; color: var(--text-muted); line-height: 1.55; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+    .mv-actions { margin-top: auto; padding-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
+    .mv-frame { position: relative; aspect-ratio: 16 / 9; width: 100%; background: #000; border-radius: var(--radius); overflow: hidden; }
+    .mv-frame iframe, .mv-frame video { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+    .src-toggle { display: flex; gap: 8px; margin-bottom: 12px; }
+    .src-toggle label { flex: 1; border: 1px solid var(--border-2); border-radius: var(--radius); padding: 9px 12px; font-size: 13px; cursor: pointer; display: flex; gap: 8px; align-items: center; }
+    .src-toggle input:checked + span { font-weight: 700; }
+    @media (max-width: 600px) { .mv-grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <img class="logo-mark" src="assets/logo-icon.png" alt="HonorVet Technologies">
+      <div class="logo-text-wrap">
+        <div class="logo-text" id="app-name">HonorVet Academy</div>
+        <div class="logo-sub">Learning Platform</div>
+      </div>
+    </div>
+    <nav class="nav-section"><div class="nav-label">Menu</div><div id="nav-links"></div></nav>
+    <div class="sidebar-footer"><div class="user-chip" id="user-chip"></div></div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <div>
+        <div class="topbar-title">Get a coffee and sit with us</div>
+        <div class="topbar-sub">Microlearning: short videos you can watch in one coffee break</div>
+      </div>
+      <div class="topbar-actions" style="display:flex;align-items:center;gap:10px">
+        <div id="notif-bell-wrap"></div>
+        <button class="btn btn-primary" id="add-btn" style="display:none" onclick="openEditor()">+ Add video</button>
+      </div>
+    </header>
+
+    <div class="page">
+      <div id="mv-area"><div class="spinner"></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- Watch modal -->
+<div class="modal-overlay" id="watch-modal">
+  <div class="modal" style="max-width:900px">
+    <div class="modal-header">
+      <span class="modal-title" id="watch-title">Video</span>
+      <button class="modal-close" onclick="closeWatch()" aria-label="Close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="watch-player"></div>
+      <div id="watch-desc" style="margin-top:14px;font-size:13.5px;line-height:1.6;white-space:pre-wrap"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Add / edit modal (admin / hr) -->
+<div class="modal-overlay" id="edit-modal">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-header">
+      <span class="modal-title" id="edit-title">Add video</span>
+      <button class="modal-close" onclick="closeModal('edit-modal')" aria-label="Close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label" for="f-title">Title</label>
+        <input class="form-input" id="f-title" placeholder="e.g. How PTO accrues, in 10 minutes">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="f-desc">Description <span style="font-weight:400;color:var(--text-muted)">(optional)</span></label>
+        <textarea class="form-textarea" id="f-desc" style="min-height:72px" placeholder="What will learners take away?"></textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="f-dur">Length in minutes <span style="font-weight:400;color:var(--text-muted)">(optional)</span></label>
+        <input class="form-input" id="f-dur" type="number" min="1" max="120" placeholder="e.g. 12" style="max-width:160px">
+      </div>
+      <label class="form-label">Video</label>
+      <div class="src-toggle">
+        <label><input type="radio" name="f-src" value="link" checked onchange="syncSource()"><span>Paste a link</span></label>
+        <label><input type="radio" name="f-src" value="upload" onchange="syncSource()"><span>Upload a file</span></label>
+      </div>
+      <div id="src-link">
+        <input class="form-input" id="f-url" type="url" placeholder="https://www.youtube.com/watch?v=…">
+        <div class="form-hint">YouTube (unlisted works), Vimeo and Google Drive play on this page. Other links, such as SharePoint or Teams, open in a new tab.</div>
+      </div>
+      <div id="src-upload" style="display:none">
+        <input class="form-input" id="f-file" type="file" accept="video/*">
+        <div class="form-hint" id="f-file-hint">MP4 is best. Your Supabase plan limits the file size (50 MB on the Free plan). For bigger videos, paste a link instead.</div>
+      </div>
+      <div id="edit-error" class="alert alert-error" style="display:none;margin-top:12px"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('edit-modal')">Cancel</button>
+      <button class="btn btn-primary" id="save-btn" onclick="saveVideo()">Save video</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="js/config.js"></script>
+<script src="js/db.js"></script>
+<script src="js/app.js"></script>
+<script>
+document.getElementById('app-name').textContent = APP_CONFIG.appName;
+
+let currentUser = null, videos = [], isAdmin = false, editing = null, busy = false;
+
+(async () => {
+  currentUser = await requireAuth();
+  if (!currentUser) return;
+  isAdmin = ['admin', 'hr'].includes(currentUser.role);
+  renderNav('microlearning', currentUser);
+  renderNotifBell(currentUser.id, 'notif-bell-wrap');
+  renderUserChip(currentUser);
+  if (isAdmin) document.getElementById('add-btn').style.display = '';
+  try {
+    videos = await MicroVideos.getAll();
+  } catch (e) {
+    document.getElementById('mv-area').innerHTML =
+      `<div class="alert alert-error">Couldn't load videos: ${escHtml(e.message)}. If this is the first time, run <code>supabase-microlearning.sql</code> in the Supabase SQL Editor.</div>`;
+    return;
+  }
+  render();
+  const want = new URLSearchParams(location.search).get('v');
+  if (want && videos.some(v => v.id === want)) openWatch(want);
+})();
+
+// ── Working out how to play a video ─────────────────────────────
+function playerFor(v) {
+  const u = v.video_url || '';
+  let m;
+  if ((m = u.match(/(?:youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/)|youtu\.be\/)([\w-]{11})/)))
+    return { kind: 'iframe', src: `https://www.youtube.com/embed/${m[1]}?rel=0`, thumb: `https://img.youtube.com/vi/${m[1]}/hqdefault.jpg` };
+  if ((m = u.match(/vimeo\.com\/(?:video\/)?(\d+)/)))
+    return { kind: 'iframe', src: `https://player.vimeo.com/video/${m[1]}` };
+  if ((m = u.match(/drive\.google\.com\/file\/d\/([\w-]+)/)))
+    return { kind: 'iframe', src: `https://drive.google.com/file/d/${m[1]}/preview` };
+  if (v.source === 'upload' || /\.(mp4|webm|mov|m4v|ogg)(\?|$)/i.test(u))
+    return { kind: 'video', src: u };
+  return { kind: 'link', src: u };
+}
+
+// ── Library ─────────────────────────────────────────────────────
+function render() {
+  const area = document.getElementById('mv-area');
+  if (!videos.length) {
+    area.innerHTML = `<div class="empty-state"><strong>No videos yet</strong>
+      <p>${isAdmin ? 'Click “+ Add video” to share your first microlearning session.' : 'New short videos will show up here soon. Check back after your next coffee.'}</p></div>`;
+    return;
+  }
+  area.innerHTML = `<div class="mv-grid">${videos.map(v => {
+    const p = playerFor(v);
+    const thumb = p.thumb ? `style="background-image:linear-gradient(rgba(35,31,32,.25),rgba(35,31,32,.25)),url('${p.thumb}')"` : '';
+    return `<div class="mv-card">
+      <div class="mv-thumb" ${thumb} role="button" tabindex="0" aria-label="Watch ${escHtml(v.title)}" onclick="openWatch('${v.id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openWatch('${v.id}')}">
+        <span class="mv-play"><svg width="22" height="22" viewBox="0 0 24 24" fill="#EE1A0F"><path d="M8 5v14l11-7z"/></svg></span>
+        ${v.duration_minutes ? `<span class="mv-dur">${v.duration_minutes} min</span>` : ''}
+      </div>
+      <div class="mv-body">
+        <div class="mv-title">${escHtml(v.title)}</div>
+        ${v.description ? `<div class="mv-desc">${escHtml(v.description)}</div>` : ''}
+        <div class="mv-actions">
+          <button class="btn btn-primary btn-sm" onclick="openWatch('${v.id}')">Watch</button>
+          <button class="btn btn-ghost btn-sm" onclick="copyLink('${v.id}')">Copy link</button>
+          ${isAdmin ? `<button class="btn btn-ghost btn-sm" onclick="openEditor('${v.id}')">Edit</button>
+          <button class="btn btn-ghost btn-sm" onclick="deleteVideo('${v.id}')">Delete</button>` : ''}
+        </div>
+      </div>
+    </div>`;
+  }).join('')}</div>`;
+}
+
+// ── Watch ───────────────────────────────────────────────────────
+function openWatch(id) {
+  const v = videos.find(x => x.id === id);
+  if (!v) return;
+  const p = playerFor(v);
+  document.getElementById('watch-title').textContent = v.title;
+  document.getElementById('watch-desc').textContent = v.description || '';
+  const box = document.getElementById('watch-player');
+  if (p.kind === 'iframe') {
+    box.innerHTML = `<div class="mv-frame"><iframe src="${escHtml(p.src)}" title="${escHtml(v.title)}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>`;
+  } else if (p.kind === 'video') {
+    box.innerHTML = `<div class="mv-frame"><video src="${escHtml(p.src)}" controls controlsList="nodownload" playsinline preload="metadata"></video></div>`;
+  } else {
+    box.innerHTML = `<div style="text-align:center;padding:28px 10px">
+      <p style="margin-bottom:14px;color:var(--text-muted)">This video opens in a new tab.</p>
+      <a class="btn btn-primary btn-lg" href="${escHtml(p.src)}" target="_blank" rel="noopener">Open video ↗</a></div>`;
+  }
+  openModal('watch-modal');
+}
+function closeWatch() {
+  document.getElementById('watch-player').innerHTML = '';   // stops playback
+  closeModal('watch-modal');
+}
+document.getElementById('watch-modal').addEventListener('click', e => {
+  if (e.target.id === 'watch-modal') document.getElementById('watch-player').innerHTML = '';
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && document.getElementById('watch-modal').classList.contains('open')) closeWatch();
+});
+
+async function copyLink(id) {
+  const url = location.origin + location.pathname + '?v=' + encodeURIComponent(id);
+  try { await navigator.clipboard.writeText(url); toast('Link copied. Learners need to be signed in to watch.', 'success'); }
+  catch (e) { prompt('Copy this link:', url); }
+}
+
+// ── Add / edit (admin / hr) ─────────────────────────────────────
+function srcValue() { return document.querySelector('input[name="f-src"]:checked').value; }
+function syncSource() {
+  const up = srcValue() === 'upload';
+  document.getElementById('src-link').style.display = up ? 'none' : '';
+  document.getElementById('src-upload').style.display = up ? '' : 'none';
+}
+function showEditError(msg) {
+  const el = document.getElementById('edit-error');
+  el.textContent = msg; el.style.display = msg ? '' : 'none';
+}
+function openEditor(id) {
+  editing = id ? videos.find(v => v.id === id) : null;
+  document.getElementById('edit-title').textContent = editing ? 'Edit video' : 'Add video';
+  document.getElementById('f-title').value = editing?.title || '';
+  document.getElementById('f-desc').value = editing?.description || '';
+  document.getElementById('f-dur').value = editing?.duration_minutes || '';
+  document.getElementById('f-url').value = editing && editing.source === 'link' ? editing.video_url : '';
+  document.getElementById('f-file').value = '';
+  document.getElementById('f-file-hint').textContent = editing?.source === 'upload'
+    ? 'A file is already uploaded. Choose a new one only if you want to replace it.'
+    : 'MP4 is best. Your Supabase plan limits the file size (50 MB on the Free plan). For bigger videos, paste a link instead.';
+  document.querySelector(`input[name="f-src"][value="${editing?.source || 'link'}"]`).checked = true;
+  syncSource(); showEditError('');
+  openModal('edit-modal');
+}
+
+async function saveVideo() {
+  if (busy) return;
+  const title = document.getElementById('f-title').value.trim();
+  const description = document.getElementById('f-desc').value.trim() || null;
+  const dur = parseInt(document.getElementById('f-dur').value);
+  const duration_minutes = dur > 0 ? dur : null;
+  const source = srcValue();
+  if (!title) return showEditError('Add a title for the video.');
+
+  const fields = { title, description, duration_minutes, source };
+  let uploaded = null, oldPath = null;
+  const btn = document.getElementById('save-btn');
+  showEditError('');
+
+  if (source === 'link') {
+    const url = document.getElementById('f-url').value.trim();
+    if (!/^https?:\/\/\S+$/i.test(url)) return showEditError('Paste a full video link starting with https://');
+    fields.video_url = url;
+    if (editing?.storage_path) { oldPath = editing.storage_path; fields.storage_path = null; }
+  } else {
+    const file = document.getElementById('f-file').files[0];
+    if (!file && !(editing && editing.source === 'upload')) return showEditError('Choose a video file to upload.');
+    if (file && !file.type.startsWith('video/')) return showEditError('That file is not a video. Choose an MP4 or similar.');
+  }
+
+  busy = true; btn.disabled = true;
+  try {
+    if (source === 'upload') {
+      const file = document.getElementById('f-file').files[0];
+      if (file) {
+        btn.textContent = 'Uploading… this can take a few minutes';
+        uploaded = await MicroVideos.upload(file);
+        fields.video_url = uploaded.url; fields.storage_path = uploaded.path;
+        if (editing?.storage_path) oldPath = editing.storage_path;
+      }
+    }
+    btn.textContent = 'Saving…';
+    const saved = await MicroVideos.save(editing
+      ? { id: editing.id, ...fields }
+      : { ...fields, created_by: currentUser.id });
+    if (oldPath) MicroVideos.removeFile(oldPath).catch(() => {});
+    videos = editing ? videos.map(v => v.id === saved.id ? saved : v) : [saved, ...videos];
+    closeModal('edit-modal');
+    render();
+    toast(editing ? 'Video updated.' : 'Video added. Use “Copy link” to share it.', 'success');
+  } catch (e) {
+    if (uploaded) MicroVideos.removeFile(uploaded.path).catch(() => {});
+    const tooBig = /exceed|too large|413|payload/i.test(e.message || '');
+    showEditError(tooBig
+      ? 'That file is larger than your Supabase plan allows. Upload it to YouTube (unlisted) or SharePoint and paste the link instead.'
+      : 'Could not save the video: ' + (e.message || e));
+  } finally {
+    busy = false; btn.disabled = false; btn.textContent = 'Save video';
+  }
+}
+
+async function deleteVideo(id) {
+  const v = videos.find(x => x.id === id);
+  if (!v || !confirm(`Delete “${v.title}”? Learners will no longer see it.` + (v.storage_path ? ' The uploaded file is deleted too.' : ''))) return;
+  try {
+    await MicroVideos.remove(v);
+    videos = videos.filter(x => x.id !== id);
+    render();
+    toast('Video deleted.', 'success');
+  } catch (e) { toast('Could not delete: ' + e.message, 'error'); }
+}
+</script>
+</body>
+</html>
