@@ -71,6 +71,17 @@
   </div>
 </div>
 
+<!-- Insights modal (admin / hr) -->
+<div class="modal-overlay" id="insights-modal">
+  <div class="modal" style="max-width:720px">
+    <div class="modal-header">
+      <span class="modal-title" id="insights-title">Insights</span>
+      <button class="modal-close" onclick="closeModal('insights-modal')" aria-label="Close">&times;</button>
+    </div>
+    <div class="modal-body" id="insights-body" style="max-height:72vh;overflow-y:auto"></div>
+  </div>
+</div>
+
 <!-- Add / edit modal (admin / hr) -->
 <div class="modal-overlay" id="edit-modal">
   <div class="modal" style="max-width:560px">
@@ -121,6 +132,7 @@
 document.getElementById('app-name').textContent = APP_CONFIG.appName;
 
 let currentUser = null, videos = [], isAdmin = false, editing = null, busy = false;
+let views = [], userById = {};   // views + names: admin / hr only
 
 (async () => {
   currentUser = await requireAuth();
@@ -137,6 +149,12 @@ let currentUser = null, videos = [], isAdmin = false, editing = null, busy = fal
       `<div class="alert alert-error">Couldn't load videos: ${escHtml(e.message)}. If this is the first time, run <code>supabase-microlearning.sql</code> in the Supabase SQL Editor.</div>`;
     return;
   }
+  if (isAdmin) {
+    try {
+      const [vw, us] = await Promise.all([MicroVideos.getViews(), Users.getAll()]);
+      views = vw; us.forEach(u => { userById[u.id] = u; });
+    } catch (e) { /* insights SQL not run yet: library still works */ }
+  }
   render();
   const want = new URLSearchParams(location.search).get('v');
   if (want && videos.some(v => v.id === want)) openWatch(want);
@@ -147,11 +165,11 @@ function playerFor(v) {
   const u = v.video_url || '';
   let m;
   if ((m = u.match(/(?:youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/)|youtu\.be\/)([\w-]{11})/)))
-    return { kind: 'iframe', src: `https://www.youtube.com/embed/${m[1]}?rel=0`, thumb: `https://img.youtube.com/vi/${m[1]}/hqdefault.jpg` };
+    return { kind: 'youtube', ytId: m[1], thumb: `https://img.youtube.com/vi/${m[1]}/hqdefault.jpg` };
   if ((m = u.match(/vimeo\.com\/(?:video\/)?(\d+)/)))
-    return { kind: 'iframe', src: `https://player.vimeo.com/video/${m[1]}` };
+    return { kind: 'vimeo', src: `https://player.vimeo.com/video/${m[1]}` };
   if ((m = u.match(/drive\.google\.com\/file\/d\/([\w-]+)/)))
-    return { kind: 'iframe', src: `https://drive.google.com/file/d/${m[1]}/preview` };
+    return { kind: 'drive', src: `https://drive.google.com/file/d/${m[1]}/preview` };
   if (v.source === 'upload' || /\.(mp4|webm|mov|m4v|ogg)(\?|$)/i.test(u))
     return { kind: 'video', src: u };
   return { kind: 'link', src: u };
@@ -176,10 +194,12 @@ function render() {
       <div class="mv-body">
         <div class="mv-title">${escHtml(v.title)}</div>
         ${v.description ? `<div class="mv-desc">${escHtml(v.description)}</div>` : ''}
+        ${isAdmin ? (() => { const s = statsFor(v.id); return `<div style="font-size:12px;color:var(--text-muted)">${s.viewers} viewer${s.viewers !== 1 ? 's' : ''} · ${fmtHours(s.totalSec)} watched</div>`; })() : ''}
         <div class="mv-actions">
           <button class="btn btn-primary btn-sm" onclick="openWatch('${v.id}')">Watch</button>
           <button class="btn btn-ghost btn-sm" onclick="copyLink('${v.id}')">Copy link</button>
-          ${isAdmin ? `<button class="btn btn-ghost btn-sm" onclick="openEditor('${v.id}')">Edit</button>
+          ${isAdmin ? `<button class="btn btn-secondary btn-sm" onclick="openInsights('${v.id}')">Insights</button>
+          <button class="btn btn-ghost btn-sm" onclick="openEditor('${v.id}')">Edit</button>
           <button class="btn btn-ghost btn-sm" onclick="deleteVideo('${v.id}')">Delete</button>` : ''}
         </div>
       </div>
@@ -188,34 +208,202 @@ function render() {
 }
 
 // ── Watch ───────────────────────────────────────────────────────
-function openWatch(id) {
+// Playback time is measured for uploaded files, YouTube and Vimeo. Google Drive
+// and other links can only record that the video was opened.
+let tracker = null, watchToken = 0, ytPlayer = null;
+
+function makeTracker(videoId) {
+  let viewId = null, creating = null, seconds = 0, saved = -1, playing = false, last = 0, timer = null;
+  const ensure = () => {
+    if (!creating) creating = MicroVideos.startView(videoId, currentUser.id).then(id => { viewId = id; }).catch(() => {});
+    return creating;
+  };
+  const tick = () => {
+    if (!playing) return;
+    const now = Date.now();
+    seconds += Math.min((now - last) / 1000, 5);   // never credit more than 5s per tick
+    last = now;
+    if (Math.round(seconds) - saved >= 10) flush();
+  };
+  const flush = async () => {
+    tick();
+    const s = Math.round(seconds);
+    if (!viewId || s === saved) return;
+    saved = s;
+    try { await MicroVideos.saveView(viewId, s); } catch (e) {}
+  };
+  return {
+    opened() { ensure(); },                       // untracked players: record the open
+    play() { if (!playing) { playing = true; last = Date.now(); } ensure(); if (!timer) timer = setInterval(tick, 1000); },
+    pause() { tick(); playing = false; flush(); },
+    flush,
+    async stop() { this.pause(); clearInterval(timer); timer = null; await creating; await flush(); },
+  };
+}
+
+function loadScriptOnce(id, src) {
+  return new Promise((resolve, reject) => {
+    const existing = document.getElementById(id);
+    if (existing) { existing.addEventListener('load', resolve); if (existing.dataset.done) resolve(); return; }
+    const s = document.createElement('script');
+    s.id = id; s.src = src;
+    s.onload = () => { s.dataset.done = '1'; resolve(); };
+    s.onerror = reject;
+    document.head.appendChild(s);
+  });
+}
+function loadYouTubeApi() {
+  return new Promise((resolve, reject) => {
+    if (window.YT && YT.Player) return resolve();
+    const prev = window.onYouTubeIframeAPIReady;
+    window.onYouTubeIframeAPIReady = () => { if (prev) prev(); resolve(); };
+    if (!document.getElementById('yt-api')) {
+      const s = document.createElement('script');
+      s.id = 'yt-api'; s.src = 'https://www.youtube.com/iframe_api'; s.onerror = reject;
+      document.head.appendChild(s);
+    }
+  });
+}
+
+async function openWatch(id) {
   const v = videos.find(x => x.id === id);
   if (!v) return;
+  await endWatch();
+  const token = ++watchToken;
   const p = playerFor(v);
   document.getElementById('watch-title').textContent = v.title;
   document.getElementById('watch-desc').textContent = v.description || '';
   const box = document.getElementById('watch-player');
-  if (p.kind === 'iframe') {
-    box.innerHTML = `<div class="mv-frame"><iframe src="${escHtml(p.src)}" title="${escHtml(v.title)}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>`;
-  } else if (p.kind === 'video') {
+  const iframeHtml = src => `<div class="mv-frame"><iframe id="mv-iframe" src="${escHtml(src)}" title="${escHtml(v.title)}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>`;
+  tracker = makeTracker(v.id);
+
+  if (p.kind === 'youtube') {
+    box.innerHTML = `<div class="mv-frame"><div id="yt-holder"></div></div>`;
+    openModal('watch-modal');
+    try {
+      await loadYouTubeApi();
+      if (token !== watchToken) return;
+      ytPlayer = new YT.Player('yt-holder', {
+        videoId: p.ytId, width: '100%', height: '100%', playerVars: { rel: 0, playsinline: 1 },
+        events: { onStateChange: e => { if (!tracker) return; e.data === 1 ? tracker.play() : tracker.pause(); } },
+      });
+    } catch (e) {
+      box.innerHTML = iframeHtml(`https://www.youtube.com/embed/${p.ytId}?rel=0`);   // plays, but time not tracked
+      tracker.opened();
+    }
+    return;
+  }
+  if (p.kind === 'vimeo') {
+    box.innerHTML = iframeHtml(p.src);
+    openModal('watch-modal');
+    try {
+      await loadScriptOnce('vimeo-api', 'https://player.vimeo.com/api/player.js');
+      if (token !== watchToken) return;
+      const pl = new Vimeo.Player(document.getElementById('mv-iframe'));
+      pl.on('play', () => tracker && tracker.play());
+      ['pause', 'ended'].forEach(ev => pl.on(ev, () => tracker && tracker.pause()));
+    } catch (e) { tracker.opened(); }
+    return;
+  }
+  if (p.kind === 'video') {
     box.innerHTML = `<div class="mv-frame"><video src="${escHtml(p.src)}" controls controlsList="nodownload" playsinline preload="metadata"></video></div>`;
+    const el = box.querySelector('video');
+    ['play', 'playing'].forEach(ev => el.addEventListener(ev, () => tracker && tracker.play()));
+    ['pause', 'ended', 'waiting'].forEach(ev => el.addEventListener(ev, () => tracker && tracker.pause()));
+  } else if (p.kind === 'drive') {
+    box.innerHTML = iframeHtml(p.src);
+    tracker.opened();
   } else {
     box.innerHTML = `<div style="text-align:center;padding:28px 10px">
       <p style="margin-bottom:14px;color:var(--text-muted)">This video opens in a new tab.</p>
-      <a class="btn btn-primary btn-lg" href="${escHtml(p.src)}" target="_blank" rel="noopener">Open video ↗</a></div>`;
+      <a class="btn btn-primary btn-lg" href="${escHtml(p.src)}" target="_blank" rel="noopener" onclick="tracker && tracker.opened()">Open video ↗</a></div>`;
   }
   openModal('watch-modal');
 }
-function closeWatch() {
+
+// Save the final watch time and stop the player
+async function endWatch() {
+  watchToken++;
+  const t = tracker; tracker = null;
+  if (ytPlayer) { try { ytPlayer.destroy(); } catch (e) {} ytPlayer = null; }
   document.getElementById('watch-player').innerHTML = '';   // stops playback
-  closeModal('watch-modal');
+  if (t) await t.stop();
 }
+function closeWatch() { closeModal('watch-modal'); endWatch(); }
 document.getElementById('watch-modal').addEventListener('click', e => {
-  if (e.target.id === 'watch-modal') document.getElementById('watch-player').innerHTML = '';
+  if (e.target.id === 'watch-modal') endWatch();
 });
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && document.getElementById('watch-modal').classList.contains('open')) closeWatch();
 });
+// Best-effort save if the tab is hidden or closed mid-video
+document.addEventListener('visibilitychange', () => { if (document.hidden && tracker) tracker.flush(); });
+window.addEventListener('pagehide', () => { if (tracker) tracker.flush(); });
+
+// ── Insights (admin / hr) ───────────────────────────────────────
+function fmtSecs(sec) {
+  sec = Math.round(sec);
+  if (sec < 1) return '—';
+  const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60), s = sec % 60;
+  if (h) return `${h}h ${String(m).padStart(2, '0')}m`;
+  if (m) return `${m}m ${String(s).padStart(2, '0')}s`;
+  return `${s}s`;
+}
+function fmtHours(sec) {
+  const h = sec / 3600;
+  return (h >= 10 ? Math.round(h) : Math.round(h * 10) / 10) + ' h';
+}
+function statsFor(videoId) {
+  const byUser = {};
+  views.filter(r => r.video_id === videoId).forEach(r => {
+    const u = byUser[r.user_id] || (byUser[r.user_id] = { userId: r.user_id, sessions: 0, seconds: 0, last: null });
+    u.sessions++;
+    u.seconds += r.watched_seconds || 0;
+    const t = r.updated_at || r.started_at;
+    if (!u.last || t > u.last) u.last = t;
+  });
+  const people = Object.values(byUser).sort((a, b) => b.seconds - a.seconds);
+  return { viewers: people.length, sessions: people.reduce((n, p) => n + p.sessions, 0),
+           totalSec: people.reduce((n, p) => n + p.seconds, 0), people };
+}
+async function openInsights(id) {
+  const v = videos.find(x => x.id === id);
+  if (!v) return;
+  document.getElementById('insights-title').textContent = 'Insights: ' + v.title;
+  document.getElementById('insights-body').innerHTML = '<div class="spinner"></div>';
+  openModal('insights-modal');
+  try {
+    views = await MicroVideos.getViews();
+    if (!Object.keys(userById).length) (await Users.getAll()).forEach(u => { userById[u.id] = u; });
+  } catch (e) {
+    document.getElementById('insights-body').innerHTML =
+      `<div class="alert alert-error">Couldn't load insights: ${escHtml(e.message)}. Run <code>supabase-microlearning-views.sql</code> in the Supabase SQL Editor.</div>`;
+    return;
+  }
+  render();   // refresh the per-card totals
+  const s = statsFor(id);
+  const tile = (label, value) => `<div class="card card-body" style="text-align:center;padding:14px 10px">
+      <div style="font-size:24px;font-weight:800;font-variant-numeric:tabular-nums">${value}</div>
+      <div style="font-size:12px;color:var(--text-muted)">${label}</div></div>`;
+  document.getElementById('insights-body').innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:18px">
+      ${tile('Viewers', s.viewers)}
+      ${tile('Total watch time', fmtHours(s.totalSec))}
+      ${tile('Times watched', s.sessions)}
+    </div>
+    ${s.people.length ? `<div class="table-wrap"><table>
+      <thead><tr><th>Learner</th><th>Times watched</th><th>Watch time</th><th>Last watched</th></tr></thead>
+      <tbody>${s.people.map(p => {
+        const u = userById[p.userId];
+        return `<tr>
+          <td><strong>${escHtml(u?.name || u?.email || 'Unknown user')}</strong>${u?.department ? `<div style="font-size:12px;color:var(--text-muted)">${escHtml(u.department)}</div>` : ''}</td>
+          <td>${p.sessions}</td>
+          <td style="white-space:nowrap">${fmtSecs(p.seconds)}</td>
+          <td style="white-space:nowrap">${p.last ? fmtDateTime(p.last) : '—'}</td></tr>`;
+      }).join('')}</tbody></table></div>`
+      : `<div class="empty-state"><strong>No views yet</strong><p>Once learners press play, they'll show up here.</p></div>`}
+    <div class="form-hint" style="margin-top:12px">Watch time is counted only while the video plays (including rewatching), and is measured for uploaded files, YouTube and Vimeo. Google Drive and other links show who opened the video but not for how long (shown as “—”).</div>`;
+}
 
 async function copyLink(id) {
   const url = location.origin + location.pathname + '?v=' + encodeURIComponent(id);

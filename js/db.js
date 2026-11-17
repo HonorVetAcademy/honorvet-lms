@@ -423,6 +423,23 @@ const MicroVideos = {
     if (error) throw error;
     await this.removeFile(video.storage_path);
   },
+  // ── Watch tracking ──
+  async startView(videoId, userId) {
+    const id = `mvv-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const { error } = await sb().from('micro_video_views').insert({ id, video_id: videoId, user_id: userId });
+    if (error) throw error;
+    return id;
+  },
+  async saveView(id, seconds) {
+    const { error } = await sb().from('micro_video_views')
+      .update({ watched_seconds: Math.max(0, Math.round(seconds)), updated_at: new Date().toISOString() }).eq('id', id);
+    if (error) throw error;
+  },
+  async getViews() {   // admin/hr: everyone's views (RLS limits others to their own)
+    const { data, error } = await sb().from('micro_video_views').select('*');
+    if (error) throw error;
+    return data || [];
+  },
 };
 
 // ── Live Quiz (one-on-one trainer-led sessions, admin/hr only) ──
